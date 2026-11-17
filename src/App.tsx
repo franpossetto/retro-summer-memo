@@ -1,0 +1,1478 @@
+import { Fragment, useEffect, useRef, useState, type DragEvent as ReactDragEvent, type PointerEvent as ReactPointerEvent } from 'react'
+import {
+  addEdge,
+  applyEdgeChanges,
+  applyNodeChanges,
+  type Connection,
+  type OnEdgesChange,
+  type OnNodesChange,
+  type XYPosition,
+} from '@xyflow/react'
+import { type Experience } from './experiences'
+import { GraphCanvas, loadGraphPanelsOpen, type GraphPanelsOpen } from './components/GraphCanvas'
+import { Home, type CvDraft } from './components/Home'
+import { ResumePreview } from './components/ResumePreview'
+import { Sidebar } from './components/Sidebar'
+import { downloadDoc, downloadPdf } from './download'
+import { ExperienceMaster } from './components/Master'
+import { Library } from './components/Templates'
+import {
+  activeCv,
+  applyProfile,
+  arrangeNodes,
+  buildResume,
+  cloneRoleGraph,
+  emptySnapshot,
+  graphFromSelection,
+  nextPosition,
+  roleHasExperience,
+  type BulletData,
+  type BulletNode,
+  type Cv,
+  type CvVersion,
+  type EducationData,
+  type EducationNode,
+  type PersonNode,
+  type CatalogSection,
+  type Profile,
+  type ResumeDocument,
+  type ResumeNode,
+  type RoleData,
+  type RoleGraph,
+  type RoleNode,
+  type SkillsData,
+  type Snapshot,
+} from './model'
+import { loadDocument, saveDocument } from './storage'
+import {
+  fonts,
+  fontSizes,
+  margins,
+  lineSpacings,
+  spacingLabel,
+  defaultFontSize,
+  defaultMargin,
+  isFontId,
+  isFontSize,
+  isLineSpacing,
+  isMarginId,
+  isPageSize,
+  pageSizes,
+  type FontId,
+  type FontSize,
+  type LineSpacing,
+  type MarginId,
+  type PageSize,
+} from './fonts'
+import { type ExperienceLevel } from './experiences'
+import { templates, type TemplateId } from './templates'
+
+type ViewId = 'preview' | 'style' | 'graph' | 'table'
+type Views = Record<ViewId, boolean>
+type MainPane = 'graph' | 'preview'
+type DockEdge = 'left' | 'right' | 'top' | 'bottom'
+type WorkspaceLayout = { main: [MainPane, MainPane]; props: DockEdge }
+
+const layoutKey = 'resume.layout.v1'
+
+function loadLayout(): WorkspaceLayout {
+  const fallback: WorkspaceLayout = { main: ['graph', 'preview'], props: 'right' }
+  try {
+    const raw = JSON.parse(localStorage.getItem(layoutKey) ?? '')
+    if (!raw || typeof raw !== 'object') return fallback
+    const main = Array.isArray(raw.main) ? raw.main.filter((id: unknown): id is MainPane => id === 'graph' || id === 'preview') : []
+    const props = raw.props === 'left' || raw.props === 'right' || raw.props === 'top' || raw.props === 'bottom' ? raw.props : fallback.props
+    if (main.length !== 2 || main[0] === main[1]) return fallback
+    return { main: [main[0], main[1]], props }
+  } catch {
+    return fallback
+  }
+}
+
+export default function App() {
+  const [doc, setDoc] = useState<ResumeDocument>(loadDocument)
+  const [screen, setScreen] = useState<'home' | 'workspace'>('home')
+  const [homeSection, setHomeSection] = useState<'projects' | 'personal' | 'experience' | 'library'>('projects')
+  const [libraryKey, setLibraryKey] = useState(0)
+  const [composerOpen, setComposerOpen] = useState(false)
+  const [views, setViews] = useState<Views>({ preview: true, style: false, graph: true, table: false })
+  const [graphPanels, setGraphPanels] = useState<GraphPanelsOpen>(loadGraphPanelsOpen)
+  const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null)
+  const [metadataOpen, setMetadataOpen] = useState(false)
+  const [fitToken, setFitToken] = useState(0)
+  const [previewShare, setPreviewShare] = useState(45)
+  const [layout, setLayout] = useState<WorkspaceLayout>(loadLayout)
+  const [dragging, setDragging] = useState<ViewId | null>(null)
+  const [dropPane, setDropPane] = useState<MainPane | null>(null)
+  const [dropEdge, setDropEdge] = useState<DockEdge | null>(null)
+  const [downloadOpen, setDownloadOpen] = useState(false)
+  const draggingRef = useRef<ViewId | null>(null)
+  const metadataRef = useRef<HTMLDivElement>(null)
+  const downloadRef = useRef<HTMLDivElement>(null)
+  const viewsRef = useRef<HTMLDetailsElement>(null)
+  const workspaceRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    saveDocument(doc)
+  }, [doc])
+
+  useEffect(() => {
+    localStorage.setItem(layoutKey, JSON.stringify(layout))
+  }, [layout])
+
+  useEffect(() => {
+    setDoc((current) => {
+      const cleaned = current.nodes.filter(
+        (node) => node.type !== 'experience' && node.type !== 'section' && node.type !== 'skills',
+      )
+      if (cleaned.length === current.nodes.length) return current
+      const ids = new Set(cleaned.map((node) => node.id))
+      return {
+        ...current,
+        nodes: cleaned,
+        edges: current.edges.filter((edge) => ids.has(edge.source) && ids.has(edge.target)),
+      }
+    })
+  }, [])
+
+  useEffect(() => {
+    if (!metadataOpen) return
+    function onPointer(event: PointerEvent) {
+      if (!metadataRef.current?.contains(event.target as Node)) setMetadataOpen(false)
+    }
+    window.addEventListener('pointerdown', onPointer)
+    return () => window.removeEventListener('pointerdown', onPointer)
+  }, [metadataOpen])
+
+  useEffect(() => {
+    if (!downloadOpen) return
+    function onPointer(event: PointerEvent) {
+      if (!downloadRef.current?.contains(event.target as Node)) setDownloadOpen(false)
+    }
+    function onKey(event: KeyboardEvent) {
+      if (event.key === 'Escape') setDownloadOpen(false)
+    }
+    window.addEventListener('pointerdown', onPointer)
+    window.addEventListener('keydown', onKey)
+    return () => {
+      window.removeEventListener('pointerdown', onPointer)
+      window.removeEventListener('keydown', onKey)
+    }
+  }, [downloadOpen])
+
+  useEffect(() => {
+    function closeViewsOutside(event: PointerEvent) {
+      if (!viewsRef.current?.contains(event.target as Node)) viewsRef.current?.removeAttribute('open')
+    }
+    function closeViewsOnEscape(event: KeyboardEvent) {
+      if (event.key === 'Escape') viewsRef.current?.removeAttribute('open')
+    }
+    window.addEventListener('pointerdown', closeViewsOutside)
+    window.addEventListener('keydown', closeViewsOnEscape)
+    return () => {
+      window.removeEventListener('pointerdown', closeViewsOutside)
+      window.removeEventListener('keydown', closeViewsOnEscape)
+    }
+  }, [])
+
+  const cv = activeCv(doc)
+  const snapshot = shownSnapshot(cv, selectedVersionId)
+  const versionNote = olderVersionNote(cv, selectedVersionId)
+  const split = views.preview && views.graph
+
+  const onNodesChange: OnNodesChange<ResumeNode> = (changes) => {
+    setDoc((current) => ({ ...current, nodes: applyNodeChanges(changes, current.nodes) }))
+  }
+
+  const onEdgesChange: OnEdgesChange = (changes) => {
+    setDoc((current) => ({ ...current, edges: applyEdgeChanges(changes, current.edges) }))
+  }
+
+  function onConnect(connection: Connection) {
+    if (!connection.source || !connection.target) return
+    setDoc((current) => {
+      const source = current.nodes.find((node) => node.id === connection.source)
+      const target = current.nodes.find((node) => node.id === connection.target)
+      if (source?.type !== 'role' || target?.type !== 'bullet') return current
+      if (roleHasExperience(current.nodes, current.edges, source.id, target.data.text, target.id)) return current
+      const withoutTarget = current.edges.filter((edge) => edge.target !== connection.target)
+      return {
+        ...current,
+        edges: addEdge({ ...connection, id: `e-${connection.source}-${connection.target}` }, withoutTarget),
+      }
+    })
+  }
+
+  function addRole(data: RoleData, position?: XYPosition) {
+    setDoc((current) => {
+      const node: RoleNode = {
+        id: crypto.randomUUID(),
+        type: 'role',
+        position: position ?? nextPosition(current.nodes, 'role'),
+        data,
+        selected: true,
+      }
+      return { ...current, nodes: [...current.nodes.map(deselect), node] }
+    })
+  }
+
+  function useRoleGraph(id: string, position: XYPosition) {
+    setDoc((current) => {
+      const graph = current.roleGraphs.find((item) => item.id === id)
+      if (!graph) return current
+      const copy = cloneRoleGraph(graph, position)
+      return {
+        ...current,
+        nodes: [...current.nodes.map(deselect), ...copy.nodes],
+        edges: [...current.edges, ...copy.edges],
+      }
+    })
+  }
+
+  function addSkillName(_skill: string, _position?: XYPosition) {
+    // Skills are metadata on Skill nodes; the Skills CV section aggregates them on Build.
+  }
+
+  function changeRoleGraphs(roleGraphs: RoleGraph[]) {
+    setDoc((current) => ({ ...current, roleGraphs }))
+  }
+
+  function setKnowledge(id: string, level: ExperienceLevel | null) {
+    setDoc((current) => {
+      const knowledge = current.knowledge.filter((answer) => answer.id !== id)
+      if (level === null) return { ...current, knowledge }
+      return { ...current, knowledge: [...knowledge, { id, level }] }
+    })
+  }
+
+  function applyKnowledge(updates: { id: string; level: ExperienceLevel }[]) {
+    if (updates.length === 0) return
+    setDoc((current) => {
+      const map = new Map(current.knowledge.map((answer) => [answer.id, answer.level]))
+      for (const update of updates) map.set(update.id, update.level)
+      return {
+        ...current,
+        knowledge: [...map.entries()].map(([id, level]) => ({ id, level })),
+      }
+    })
+  }
+
+  function addExperience(preset: Experience, position?: XYPosition, sourceId?: string) {
+    setDoc((current) => {
+      if (sourceId && roleHasExperience(current.nodes, current.edges, sourceId, preset.text)) return current
+      const id = crypto.randomUUID()
+      const node: BulletNode = {
+        id,
+        type: 'bullet',
+        position: position ?? nextPosition(current.nodes, 'bullet'),
+        data: { text: preset.text, ability: '', skills: [...preset.skills] },
+        selected: true,
+      }
+      const edges = sourceId
+        ? addEdge(
+            { id: `e-${sourceId}-${id}`, source: sourceId, target: id, sourceHandle: 'out', targetHandle: 'in' },
+            current.edges.filter((edge) => edge.target !== id),
+          )
+        : current.edges
+      return { ...current, nodes: [...current.nodes.map(deselect), node], edges }
+    })
+  }
+
+  function addPerson(position?: XYPosition) {
+    setDoc((current) => {
+      if (current.nodes.some((node) => node.type === 'person')) return current
+      const node: PersonNode = {
+        id: crypto.randomUUID(),
+        type: 'person',
+        position: position ?? { x: 48, y: 48 },
+        data: { ...current.profile },
+        selected: true,
+      }
+      return { ...current, nodes: [...current.nodes.map(deselect), node] }
+    })
+  }
+
+  function arrange() {
+    setDoc((current) => ({ ...current, nodes: arrangeNodes(current.nodes, current.edges) }))
+    setFitToken((token) => token + 1)
+  }
+
+  function cleanGraph() {
+    setDoc((current) => {
+      const nodesById = new Map(current.nodes.map((node) => [node.id, node]))
+      const bulletRoleLinks = new Map<string, Set<string>>()
+      for (const edge of current.edges) {
+        const target = nodesById.get(edge.target)
+        const source = nodesById.get(edge.source)
+        if (target?.type !== 'bullet' || source?.type !== 'role') continue
+        const roles = bulletRoleLinks.get(target.id) ?? new Set<string>()
+        roles.add(source.id)
+        bulletRoleLinks.set(target.id, roles)
+      }
+      const conflictedBulletIds = new Set<string>()
+      for (const [bulletId, roleIds] of bulletRoleLinks) {
+        if (roleIds.size > 1) conflictedBulletIds.add(bulletId)
+      }
+      for (const role of current.nodes) {
+        if (role.type !== 'role') continue
+        const seenTexts = new Set<string>()
+        for (const edge of current.edges) {
+          if (edge.source !== role.id) continue
+          const bullet = nodesById.get(edge.target)
+          if (bullet?.type !== 'bullet') continue
+          const text = bullet.data.text.trim().toLocaleLowerCase()
+          if (!text) continue
+          if (seenTexts.has(text)) conflictedBulletIds.add(bullet.id)
+          else seenTexts.add(text)
+        }
+      }
+      const emptyRoleIds = new Set(
+        current.nodes
+          .filter((node) => node.type === 'role' && (
+            node.data.pending ||
+            !current.edges.some((edge) =>
+              edge.source === node.id &&
+              !conflictedBulletIds.has(edge.target) &&
+              nodesById.get(edge.target)?.type === 'bullet',
+            ) ||
+            (!node.data.title.trim() && !node.data.company.trim() && !node.data.start.trim() && !node.data.end.trim())
+          ))
+          .map((node) => node.id),
+      )
+      const linkedBullets = new Set(
+        [...bulletRoleLinks]
+          .filter(([bulletId, roleIds]) =>
+            !conflictedBulletIds.has(bulletId) && [...roleIds].some((roleId) => !emptyRoleIds.has(roleId)),
+          )
+          .map(([bulletId]) => bulletId),
+      )
+      const orphanBulletIds = new Set(
+        current.nodes
+          .filter((node) => node.type === 'bullet' && (!linkedBullets.has(node.id) || !node.data.text.trim()))
+          .map((node) => node.id),
+      )
+      const removed = new Set([...emptyRoleIds, ...orphanBulletIds, ...conflictedBulletIds])
+      if (removed.size === 0) return current
+      return {
+        ...current,
+        nodes: current.nodes.filter((node) => !removed.has(node.id)),
+        edges: current.edges.filter((edge) => !removed.has(edge.source) && !removed.has(edge.target)),
+      }
+    })
+  }
+
+  function updateRole(id: string, patch: Partial<RoleData>) {
+    setDoc((current) => ({
+      ...current,
+      nodes: current.nodes.map((node) =>
+        node.type === 'role' && node.id === id ? { ...node, data: { ...node.data, ...patch } } : node,
+      ),
+    }))
+  }
+
+  function updateBullet(id: string, patch: Partial<BulletData>) {
+    setDoc((current) => ({
+      ...current,
+      nodes: current.nodes.map((node) =>
+        node.type === 'bullet' && node.id === id ? { ...node, data: { ...node.data, ...patch } } : node,
+      ),
+    }))
+  }
+
+  function updateSkills(id: string, patch: Partial<SkillsData>) {
+    setDoc((current) => ({
+      ...current,
+      nodes: current.nodes.map((node) =>
+        node.type === 'skills' && node.id === id ? { ...node, data: { ...node.data, ...patch } } : node,
+      ),
+    }))
+  }
+
+  function toggleHidden(id: string) {
+    setDoc((current) => {
+      const node = current.nodes.find((item) => item.id === id)
+      if (!node || (node.type !== 'bullet' && node.type !== 'person' && node.type !== 'skills')) return current
+      const hidden = node.data.hidden ? undefined : true
+      return {
+        ...current,
+        profile: node.type === 'person' ? { ...current.profile, hidden } : current.profile,
+        nodes: current.nodes.map((item) => {
+          if (item.id !== id) return item
+          if (item.type === 'person') return { ...item, data: { ...item.data, hidden } }
+          if (item.type === 'bullet') return { ...item, data: { ...item.data, hidden } }
+          if (item.type === 'skills') return { ...item, data: { ...item.data, hidden } }
+          return item
+        }),
+      }
+    })
+  }
+
+  function updatePerson(id: string, patch: Partial<Profile>) {
+    setDoc((current) => {
+      const node = current.nodes.find((item) => item.id === id && item.type === 'person')
+      if (!node) return current
+      return writeProfile(current, { ...current.profile, ...patch })
+    })
+  }
+
+  function updateProfile(patch: Partial<Profile>) {
+    setDoc((current) => writeProfile(current, { ...current.profile, ...patch }))
+  }
+
+  function deleteNode(id: string) {
+    setDoc((current) => ({
+      ...current,
+      nodes: current.nodes.filter((node) => node.id !== id),
+      edges: current.edges.filter((edge) => edge.source !== id && edge.target !== id),
+    }))
+  }
+
+  function deleteEdge(id: string) {
+    setDoc((current) => ({ ...current, edges: current.edges.filter((edge) => edge.id !== id) }))
+  }
+
+  function selectNode(id: string) {
+    setDoc((current) => ({
+      ...current,
+      nodes: current.nodes.map((node) => ({ ...node, selected: node.id === id })),
+    }))
+  }
+
+  function updateCvMeta(patch: Partial<Pick<Cv, 'title' | 'position' | 'company' | 'posting' | 'summary'>>) {
+    setDoc((current) => ({
+      ...current,
+      cvs: current.cvs.map((item) => (item.id === current.activeCvId ? { ...item, ...patch } : item)),
+    }))
+  }
+
+  function updateBank(bank: Experience[]) {
+    setDoc((current) => ({ ...current, bank }))
+  }
+
+  function openCv(id: string) {
+    setDoc((current) => {
+      if (current.activeCvId === id) return current
+      const cvs = rememberGraph(current)
+      const next = cvs.find((cv) => cv.id === id)
+      if (!next) return current
+      return { ...current, cvs, activeCvId: id, nodes: next.nodes, edges: next.edges }
+    })
+    setSelectedVersionId(null)
+    setMetadataOpen(false)
+    setComposerOpen(false)
+    setScreen('workspace')
+  }
+
+  function createCv(draft: CvDraft) {
+    const id = crypto.randomUUID()
+    const versionId = crypto.randomUUID()
+    setDoc((current) => {
+      const version: CvVersion = { id: versionId, createdAt: new Date().toISOString(), snapshot: emptySnapshot() }
+      const selected = draft.experienceIds
+        .map((experienceId) => current.bank.find((item) => item.id === experienceId))
+        .filter((item): item is Experience => Boolean(item))
+      const graph = graphFromSelection(
+        current.profile,
+        { title: draft.position || draft.title, company: draft.company },
+        selected,
+      )
+      const enabledSections = selected.length > 0
+        ? ['personal', 'experience', 'skills']
+        : ['personal']
+      const next: Cv = {
+        id,
+        title: draft.title.trim() || 'Untitled',
+        position: draft.position.trim(),
+        company: draft.company.trim(),
+        posting: draft.posting,
+        summary: '',
+        templateId: draft.templateId,
+        fontId: draft.fontId,
+        fontSize: defaultFontSize(draft.templateId),
+        lineHeight: 1.15,
+        marginId: defaultMargin(draft.templateId),
+        pageSize: 'letter',
+        enabledSections,
+        versions: [version],
+        nodes: graph.nodes,
+        edges: graph.edges,
+      }
+      return {
+        ...current,
+        cvs: [...rememberGraph(current), next],
+        activeCvId: id,
+        nodes: graph.nodes,
+        edges: graph.edges,
+      }
+    })
+    setSelectedVersionId(versionId)
+    setMetadataOpen(false)
+    setComposerOpen(false)
+    setViews((current) => ({ ...current, preview: true, graph: true }))
+    setScreen('workspace')
+  }
+
+  function deleteCv(id: string) {
+    setDoc((current) => {
+      const cvs = current.cvs.filter((item) => item.id !== id)
+      if (current.activeCvId !== id) return { ...current, cvs }
+      const next = cvs[0]
+      return {
+        ...current,
+        cvs,
+        activeCvId: next?.id ?? '',
+        nodes: next?.nodes ?? [],
+        edges: next?.edges ?? [],
+      }
+    })
+    setScreen('home')
+  }
+
+  function clearSelection() {
+    setDoc((current) => ({
+      ...current,
+      nodes: current.nodes.map((node) => (node.selected ? { ...node, selected: false } : node)),
+    }))
+  }
+
+  function addEducation(position?: XYPosition) {
+    setDoc((current) => {
+      if (current.nodes.some((node) => node.type === 'education')) return current
+      const node: EducationNode = {
+        id: crypto.randomUUID(),
+        type: 'education',
+        position: position ?? { x: 400, y: 48 },
+        data: { entries: [] },
+        selected: true,
+      }
+      return { ...current, nodes: [...current.nodes.map(deselect), node] }
+    })
+  }
+
+  function updateEducation(id: string, patch: Partial<EducationData>) {
+    setDoc((current) => ({
+      ...current,
+      nodes: current.nodes.map((node) => (node.id === id && node.type === 'education' ? { ...node, data: { ...node.data, ...patch } } : node)),
+    }))
+  }
+
+  function updateStyle(patch: Partial<Pick<Cv, 'fontId' | 'fontSize' | 'lineHeight' | 'marginId' | 'pageSize' | 'skillsFormat'>>) {
+    setDoc((current) => ({
+      ...current,
+      cvs: current.cvs.map((item) => (item.id === current.activeCvId ? { ...item, ...patch } : item)),
+    }))
+  }
+
+  function changeSections(update: (sections: CatalogSection[]) => CatalogSection[]) {
+    setDoc((current) => {
+      const sections = update(current.sections)
+      const ids = new Set(sections.map((section) => section.id))
+      return {
+        ...current,
+        sections,
+        cvs: current.cvs.map((cv) => ({
+          ...cv,
+          enabledSections: cv.enabledSections.filter((id) => ids.has(id)),
+        })),
+      }
+    })
+  }
+
+  function toggleSection(id: string) {
+    setDoc((current) => {
+      const cv = current.cvs.find((item) => item.id === current.activeCvId)
+      const turningOn = cv ? !cv.enabledSections.includes(id) : false
+      let nodes = current.nodes
+      if (turningOn && id === 'personal' && !nodes.some((node) => node.type === 'person')) {
+        nodes = [
+          ...nodes,
+          {
+            id: crypto.randomUUID(),
+            type: 'person' as const,
+            position: { x: 48, y: 48 },
+            data: { ...current.profile },
+          },
+        ]
+      }
+      if (turningOn && id === 'education' && !nodes.some((node) => node.type === 'education')) {
+        nodes = [
+          ...nodes,
+          {
+            id: crypto.randomUUID(),
+            type: 'education' as const,
+            position: { x: 400, y: 48 },
+            data: { entries: [] },
+          },
+        ]
+      }
+      return {
+        ...current,
+        nodes,
+        cvs: current.cvs.map((item) => {
+          if (item.id !== current.activeCvId) return item
+          const enabled = item.enabledSections.includes(id)
+            ? item.enabledSections.filter((section) => section !== id)
+            : [...item.enabledSections, id]
+          return { ...item, enabledSections: enabled }
+        }),
+      }
+    })
+  }
+
+  function updateTemplate(templateId: TemplateId) {
+    setDoc((current) => ({
+      ...current,
+      cvs: current.cvs.map((item) => (item.id === current.activeCvId ? { ...item, templateId } : item)),
+    }))
+  }
+
+  function build() {
+    const versionId = crypto.randomUUID()
+    setDoc((current) => {
+      const summary = current.cvs.find((item) => item.id === current.activeCvId)?.summary ?? ''
+      const version: CvVersion = {
+        id: versionId,
+        createdAt: new Date().toISOString(),
+        snapshot: buildResume(current.nodes, current.edges, summary),
+      }
+      return {
+        ...current,
+        cvs: current.cvs.map((item) =>
+          item.id === current.activeCvId ? { ...item, versions: [...item.versions, version] } : item,
+        ),
+      }
+    })
+    setSelectedVersionId(versionId)
+    setViews((current) => ({ ...current, preview: true }))
+  }
+
+  function toggleView(id: ViewId) {
+    setViews((current) => ({ ...current, [id]: !current[id] }))
+  }
+
+  function onSashPointerDown(event: ReactPointerEvent<HTMLDivElement>) {
+    event.preventDefault()
+    event.currentTarget.setPointerCapture(event.pointerId)
+  }
+
+  function onSashPointerMove(event: ReactPointerEvent<HTMLDivElement>) {
+    if (!event.currentTarget.hasPointerCapture(event.pointerId)) return
+    const rect = workspaceRef.current?.getBoundingClientRect()
+    if (!rect || rect.width === 0) return
+    const side = views.style && (layout.props === 'left' || layout.props === 'right')
+    const styleWidth = side ? 240 : 0
+    const available = rect.width - styleWidth
+    if (available <= 0) return
+    const origin = rect.left + (layout.props === 'left' && side ? styleWidth : 0)
+    const leftShare = ((event.clientX - origin) / available) * 100
+    const clamped = Math.min(78, Math.max(22, leftShare))
+    setPreviewShare(layout.main[0] === 'preview' ? clamped : 100 - clamped)
+  }
+
+  function beginDrag(id: ViewId, event: ReactDragEvent<HTMLElement>) {
+    draggingRef.current = id
+    event.dataTransfer.setData('text/plain', id)
+    event.dataTransfer.effectAllowed = 'move'
+    setDragging(id)
+  }
+
+  function endDrag() {
+    draggingRef.current = null
+    setDragging(null)
+    setDropPane(null)
+    setDropEdge(null)
+  }
+
+  function swapMain() {
+    setLayout((current) => ({ ...current, main: [current.main[1], current.main[0]] }))
+  }
+
+  const graph = {
+    nodes: doc.nodes,
+    edges: doc.edges,
+    onNodesChange,
+    onEdgesChange,
+    onConnect,
+    sections: doc.sections,
+    enabledSections: cv.enabledSections,
+    onToggleSection: toggleSection,
+    onBuild: build,
+    roleGraphs: doc.roleGraphs,
+    bank: doc.bank,
+    jobs: doc.profile.jobs,
+    onAddRole: addRole,
+    onUseRoleGraph: useRoleGraph,
+    onAddSkillName: addSkillName,
+    knowledge: doc.knowledge,
+    onAddExperience: addExperience,
+    onAddPerson: addPerson,
+    onAddEducation: addEducation,
+    onArrange: arrange,
+    onCleanGraph: cleanGraph,
+    visibleViews: { graph: views.graph, table: views.table },
+    onToggleView: (view: 'graph' | 'table') => setViews((current) => ({ ...current, [view]: !current[view] })),
+    onUpdateRole: updateRole,
+    onUpdateBullet: updateBullet,
+    onUpdatePerson: updatePerson,
+    onUpdateSkills: updateSkills,
+    onUpdateEducation: updateEducation,
+    onDeleteNode: deleteNode,
+    onToggleHidden: toggleHidden,
+    onDeleteEdge: deleteEdge,
+    onSelectNode: selectNode,
+    onClearSelection: clearSelection,
+    presentation: 'graph' as const,
+    fitToken,
+    panelsOpen: graphPanels,
+    onPanelsOpenChange: setGraphPanels,
+  }
+
+  function mainDrag(id: MainPane) {
+    return {
+      onDragOver: (event: ReactDragEvent<HTMLElement>) => {
+        const source = draggingRef.current
+        if ((source !== 'graph' && source !== 'preview') || source === id) return
+        event.preventDefault()
+        setDropPane(id)
+      },
+      onDrop: (event: ReactDragEvent<HTMLElement>) => {
+        event.preventDefault()
+        const source = draggingRef.current
+        if ((source === 'graph' || source === 'preview') && source !== id) swapMain()
+        endDrag()
+      },
+    }
+  }
+
+  const propsBar = layout.props === 'top' || layout.props === 'bottom'
+  const stylePane = views.style ? (
+    <section className="view-pane is-style" aria-label="Style">
+      <div className="view-tab is-draggable" draggable onDragStart={(event) => beginDrag('style', event)} onDragEnd={endDrag}>
+        <span className="view-grab">
+          Style
+        </span>
+        <button type="button" className="view-close" aria-label="Close style" onClick={() => toggleView('style')}>
+          ×
+        </button>
+      </div>
+      <StylePane
+        bar={propsBar}
+        templateId={cv.templateId}
+        fontId={cv.fontId}
+        fontSize={cv.fontSize}
+        lineHeight={cv.lineHeight}
+        marginId={cv.marginId}
+      pageSize={cv.pageSize}
+      skillsFormat={cv.skillsFormat ?? 'list'}
+        onTemplate={updateTemplate}
+        onChange={updateStyle}
+      />
+    </section>
+  ) : null
+
+  const exportSnapshot = snapshot?.placeholder
+    ? { ...snapshot, profile: doc.profile.hidden ? { name: '', fields: [], education: [], jobs: [] } : doc.profile }
+    : snapshot
+
+  const previewPane = (
+    <section
+      className={dropPane === 'preview' ? 'view-pane is-preview is-drop' : 'view-pane is-preview'}
+      aria-label="Preview"
+      style={split ? { flex: 'none', width: `${previewShare}%` } : undefined}
+      {...mainDrag('preview')}
+    >
+      <div className="view-tab is-draggable" draggable onDragStart={(event) => beginDrag('preview', event)} onDragEnd={endDrag}>
+        <span className="view-grab">
+          Preview
+        </span>
+        <button type="button" className="view-close" aria-label="Close preview" onClick={() => toggleView('preview')}>
+          ×
+        </button>
+      </div>
+      <div className="view-body resume-pane">
+        {versionNote ? <p className="version-note">{versionNote}</p> : null}
+        <ResumePreview
+          snapshot={exportSnapshot}
+          templateId={cv.templateId}
+          fontId={cv.fontId}
+          fontSize={cv.fontSize}
+          lineHeight={cv.lineHeight}
+          marginId={cv.marginId}
+          pageSize={cv.pageSize}
+          skillsFormat={cv.skillsFormat ?? 'list'}
+          enabledSections={cv.enabledSections}
+          sections={doc.sections}
+          blocks={snapshot?.blocks ?? []}
+          highlightId={selectedBulletId(doc.nodes, snapshot)}
+        />
+      </div>
+    </section>
+  )
+
+  const graphPane = (
+    <section
+      className={dropPane === 'graph' ? 'view-pane is-graph is-drop' : 'view-pane is-graph'}
+      aria-label="Graph"
+      {...mainDrag('graph')}
+    >
+      <div className="view-tab is-draggable" draggable onDragStart={(event) => beginDrag('graph', event)} onDragEnd={endDrag}>
+        <span className="view-grab">
+          Graph
+        </span>
+        <button type="button" className="view-close" aria-label="Close graph" onClick={() => toggleView('graph')}>
+          ×
+        </button>
+      </div>
+      <div className="view-body">
+        <GraphCanvas {...graph} />
+      </div>
+    </section>
+  )
+
+  const tablePane = (
+    <section className="view-pane is-graph" aria-label="Table">
+      <div className="view-tab is-draggable" draggable onDragStart={(event) => beginDrag('graph', event)} onDragEnd={endDrag}>
+        <span className="view-grab">
+          Table
+        </span>
+        <button type="button" className="view-close" aria-label="Close table" onClick={() => toggleView('table')}>
+          ×
+        </button>
+      </div>
+      <div className="view-body">
+        <GraphCanvas {...graph} presentation="table" />
+      </div>
+    </section>
+  )
+
+  return (
+    <div className="app">
+      <Sidebar
+        section={screen === 'workspace' ? 'workspace' : homeSection}
+        onProjects={() => {
+          setComposerOpen(false)
+          setHomeSection('projects')
+          setScreen('home')
+        }}
+        onPersonal={() => {
+          setComposerOpen(false)
+          setHomeSection('personal')
+          setScreen('home')
+        }}
+        onExperience={() => {
+          setComposerOpen(false)
+          setHomeSection('experience')
+          setScreen('home')
+        }}
+        onLibrary={() => {
+          setComposerOpen(false)
+          setLibraryKey((key) => key + 1)
+          setHomeSection('library')
+          setScreen('home')
+        }}
+      />
+      <div className="shell-main">
+      {screen === 'workspace' ? (
+      <header className="topbar">
+        <div className="cv-anchor" ref={metadataRef}>
+          <button
+            type="button"
+            className="cv-identity"
+            aria-expanded={metadataOpen}
+            onClick={() => setMetadataOpen((open) => !open)}
+          >
+            <span className="cv-title">{cv.title.trim() || 'Untitled'}</span>
+            {cv.position.trim() || cv.company.trim() ? (
+              <span className="cv-subtitle">
+                {[cv.position.trim(), cv.company.trim()].filter(Boolean).join(' · ')}
+              </span>
+            ) : (
+              <span className="cv-subtitle is-muted">Add position & posting</span>
+            )}
+          </button>
+          {metadataOpen ? (
+            <CvMetadata
+              cv={cv}
+              sections={doc.sections}
+              selectedVersionId={selectedVersionId}
+              onMeta={updateCvMeta}
+              onTemplate={updateTemplate}
+              onToggleSection={toggleSection}
+              onSelectVersion={setSelectedVersionId}
+            />
+          ) : null}
+        </div>
+        <div className="topbar-gap" />
+        <details ref={viewsRef} className="views-anchor">
+          <summary className="view-toggle views-trigger" aria-label="Views"><ViewsIcon /><span>Views</span></summary>
+          <div className="view-toggles views-menu" role="toolbar" aria-label="Available views">
+          <div className="views-menu-title">Available views</div>
+          <button
+            type="button"
+            className={views.preview ? 'view-toggle is-open' : 'view-toggle'}
+            aria-pressed={views.preview}
+            aria-label="Preview"
+            onClick={() => toggleView('preview')}
+          >
+            <PreviewIcon />
+            <span>Preview</span>
+          </button>
+          <button
+            type="button"
+            className={views.style ? 'view-toggle is-open' : 'view-toggle'}
+            aria-pressed={views.style}
+            aria-label="Style"
+            onClick={() => toggleView('style')}
+          >
+            <StyleIcon />
+            <span>Style</span>
+          </button>
+          <button
+            type="button"
+            className={views.graph ? 'view-toggle is-open' : 'view-toggle'}
+            aria-pressed={views.graph}
+            aria-label="Graph"
+            onClick={() => toggleView('graph')}
+          >
+            <GraphIcon />
+            <span>Graph</span>
+          </button>
+          <button
+            type="button"
+            className={views.table ? 'view-toggle is-open' : 'view-toggle'}
+            aria-pressed={views.table}
+            aria-label="Table"
+            onClick={() => toggleView('table')}
+          >
+            <TableIcon />
+            <span>Table</span>
+          </button>
+          </div>
+        </details>
+        <div className="download-anchor" ref={downloadRef}>
+          <button
+            type="button"
+            className="view-toggle"
+            aria-label="Download"
+            aria-expanded={downloadOpen}
+            aria-haspopup="menu"
+            data-tip={downloadOpen ? undefined : 'Download'}
+            onClick={() => setDownloadOpen((open) => !open)}
+          >
+            <DownloadIcon />
+          </button>
+          {downloadOpen ? (
+            <div className="download-menu" role="menu">
+              <button type="button" role="menuitem" disabled={!exportSnapshot} onClick={() => { setDownloadOpen(false); downloadPdf(cv.pageSize, cv.title) }}>
+                PDF
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                disabled={!exportSnapshot}
+                onClick={() => {
+                  if (!exportSnapshot) return
+                  setDownloadOpen(false)
+                  downloadDoc(cv.title, exportSnapshot, cv.enabledSections, doc.sections)
+                }}
+              >
+                DOC
+              </button>
+            </div>
+          ) : null}
+        </div>
+        <button type="button" className="button primary build-button" aria-label="Build" data-tip="Build" onClick={build}>
+          <BuildIcon />
+        </button>
+      </header>
+      ) : null}
+      {screen === 'home' && homeSection === 'experience' ? (
+        <ExperienceMaster
+          bank={doc.bank}
+          answers={doc.knowledge}
+          onAnswer={setKnowledge}
+          onApplyAnswers={applyKnowledge}
+          onBank={updateBank}
+        />
+      ) : screen === 'home' && homeSection === 'library' ? (
+        <Library
+          key={libraryKey}
+          sections={doc.sections}
+          roleGraphs={doc.roleGraphs}
+          bank={doc.bank}
+          jobs={doc.profile.jobs}
+          onChange={changeSections}
+          onChangeRoles={changeRoleGraphs}
+        />
+      ) : screen === 'home' ? (
+        <Home
+          cvs={doc.cvs}
+          bank={doc.bank}
+          knowledge={doc.knowledge}
+          section={homeSection === 'personal' ? 'personal' : 'projects'}
+          composerOpen={composerOpen}
+          onComposerOpenChange={setComposerOpen}
+          profile={doc.profile}
+          onProfile={updateProfile}
+          onOpen={openCv}
+          onCreate={createCv}
+          onDelete={deleteCv}
+        />
+      ) : (
+      <>
+      <main ref={workspaceRef} className={split ? `workspace is-split is-props-${layout.props}` : `workspace is-props-${layout.props}`}>
+        {layout.props === 'top' ? stylePane : null}
+        <div className="workspace-band">
+          {layout.props === 'left' ? stylePane : null}
+          <div className="workspace-main">
+            {[...layout.main, 'table' as const].map((id, index) => {
+              if (!views[id]) return null
+              const earlier = [...layout.main, 'table' as const].slice(0, index).some((item) => views[item])
+              return (
+                <Fragment key={id}>
+                  {earlier && split ? (
+                    <div
+                      className="view-sash"
+                      role="separator"
+                      tabIndex={0}
+                      aria-orientation="vertical"
+                      aria-label="Resize views"
+                      onPointerDown={onSashPointerDown}
+                      onPointerMove={onSashPointerMove}
+                    />
+                  ) : null}
+                  {id === 'preview' ? previewPane : id === 'graph' ? graphPane : tablePane}
+                </Fragment>
+              )
+            })}
+            {!views.preview && !views.style && !views.graph && !views.table ? <p className="workspace-empty">Open Preview, Style, Graph, or Table.</p> : null}
+          </div>
+          {layout.props === 'right' ? stylePane : null}
+        </div>
+        {layout.props === 'bottom' ? stylePane : null}
+        {dragging === 'style' ? (
+          <DockZones
+            hot={dropEdge}
+            onHot={setDropEdge}
+            onDock={(edge) => {
+              setLayout((current) => ({ ...current, props: edge }))
+              endDrag()
+            }}
+          />
+        ) : null}
+      </main>
+      {exportSnapshot ? (
+        <div className="print-source" aria-hidden="true">
+          <ResumePreview
+            snapshot={exportSnapshot}
+            templateId={cv.templateId}
+            fontId={cv.fontId}
+            fontSize={cv.fontSize}
+            lineHeight={cv.lineHeight}
+            marginId={cv.marginId}
+            pageSize={cv.pageSize}
+            enabledSections={cv.enabledSections}
+            sections={doc.sections}
+            blocks={snapshot?.blocks ?? []}
+          />
+        </div>
+      ) : null}
+      </>
+      )}
+      </div>
+    </div>
+  )
+}
+
+function DownloadIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M8 2.5v7M5.2 7.2 8 10l2.8-2.8" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M3 12.5h10" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+    </svg>
+  )
+}
+
+function PreviewIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+      <rect x="2.5" y="1.5" width="11" height="13" rx="1" fill="none" stroke="currentColor" strokeWidth="1.4" />
+      <path d="M5 5.5h6M5 8h6M5 10.5h3.5" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+    </svg>
+  )
+}
+
+function StyleIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h11" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+      <circle cx="6" cy="4.5" r="1.5" fill="currentColor" />
+      <circle cx="10.5" cy="8" r="1.5" fill="currentColor" />
+      <circle cx="7" cy="11.5" r="1.5" fill="currentColor" />
+    </svg>
+  )
+}
+
+function GraphIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+      <circle cx="4" cy="4.5" r="1.7" fill="none" stroke="currentColor" strokeWidth="1.4" />
+      <circle cx="12" cy="3.5" r="1.7" fill="none" stroke="currentColor" strokeWidth="1.4" />
+      <circle cx="8.5" cy="12" r="1.7" fill="none" stroke="currentColor" strokeWidth="1.4" />
+      <path d="M5.5 5.2 7.4 10.5M10.6 4.6 9.2 10.4" fill="none" stroke="currentColor" strokeWidth="1.4" />
+    </svg>
+  )
+}
+
+function TableIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+      <rect x="2" y="2.5" width="12" height="11" rx="1" fill="none" stroke="currentColor" strokeWidth="1.4" />
+      <path d="M2.5 6h11M6 6.5v6.5M10 6.5v6.5" fill="none" stroke="currentColor" strokeWidth="1.2" />
+    </svg>
+  )
+}
+
+function ViewsIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+      <rect x="2" y="2.5" width="12" height="4.5" rx="1" fill="none" stroke="currentColor" strokeWidth="1.3" />
+      <rect x="2" y="9" width="5" height="4.5" rx="1" fill="none" stroke="currentColor" strokeWidth="1.3" />
+      <rect x="9" y="9" width="5" height="4.5" rx="1" fill="none" stroke="currentColor" strokeWidth="1.3" />
+    </svg>
+  )
+}
+
+function BuildIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M5 3.2v9.6L12.5 8 5 3.2z" fill="currentColor" />
+    </svg>
+  )
+}
+
+function DockZones({
+  hot,
+  onHot,
+  onDock,
+}: {
+  hot: DockEdge | null
+  onHot: (edge: DockEdge) => void
+  onDock: (edge: DockEdge) => void
+}) {
+  const edges: DockEdge[] = ['left', 'right', 'top', 'bottom']
+  return (
+    <>
+      {edges.map((edge) => (
+        <div
+          key={edge}
+          className={hot === edge ? `dock-zone is-${edge} is-hot` : `dock-zone is-${edge}`}
+          onDragOver={(event) => {
+            event.preventDefault()
+            onHot(edge)
+          }}
+          onDrop={(event) => {
+            event.preventDefault()
+            onDock(edge)
+          }}
+        >
+          {edge}
+        </div>
+      ))}
+    </>
+  )
+}
+
+function StylePane({
+  bar,
+  templateId,
+  fontId,
+  fontSize,
+  lineHeight,
+  marginId,
+  pageSize,
+  skillsFormat,
+  onTemplate,
+  onChange,
+}: {
+  bar: boolean
+  templateId: TemplateId
+  fontId: FontId
+  fontSize: FontSize
+  lineHeight: LineSpacing
+  marginId: MarginId
+  pageSize: PageSize
+  skillsFormat: 'list' | 'comma'
+  onTemplate: (templateId: TemplateId) => void
+  onChange: (patch: Partial<Pick<Cv, 'fontId' | 'fontSize' | 'lineHeight' | 'marginId' | 'pageSize' | 'skillsFormat'>>) => void
+}) {
+  const family = fonts.find((font) => font.id === fontId)?.family
+  return (
+    <div className={bar ? 'style-pane is-bar' : 'style-pane'}>
+      <label className="field">
+        <span>Template</span>
+        <select
+          aria-label="Template"
+          value={templateId}
+          onChange={(event) => {
+            const template = templates.find((item) => item.id === event.target.value)
+            if (template) onTemplate(template.id)
+          }}
+        >
+          {templates.map((template) => (
+            <option key={template.id} value={template.id}>
+              {template.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="field">
+        <span>Font</span>
+        <select
+          aria-label="Font"
+          value={fontId}
+          style={{ fontFamily: family }}
+          onChange={(event) => {
+            if (isFontId(event.target.value)) onChange({ fontId: event.target.value })
+          }}
+        >
+          {fonts.map((font) => (
+            <option key={font.id} value={font.id} style={{ fontFamily: font.family }}>
+              {font.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="field">
+        <span>Size</span>
+        <select
+          aria-label="Font size"
+          value={fontSize}
+          onChange={(event) => {
+            const size = Number(event.target.value)
+            if (isFontSize(size)) onChange({ fontSize: size })
+          }}
+        >
+          {fontSizes.map((size) => (
+            <option key={size} value={size}>
+              {size}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="field">
+        <span>Spacing</span>
+        <select
+          aria-label="Line spacing"
+          value={lineHeight}
+          onChange={(event) => {
+            const spacing = Number(event.target.value)
+            if (isLineSpacing(spacing)) onChange({ lineHeight: spacing })
+          }}
+        >
+          {lineSpacings.map((spacing) => (
+            <option key={spacing} value={spacing}>
+              {spacingLabel(spacing)}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="field">
+        <span>Margins</span>
+        <select
+          aria-label="Margins"
+          value={marginId}
+          onChange={(event) => {
+            if (isMarginId(event.target.value)) onChange({ marginId: event.target.value })
+          }}
+        >
+          {margins.map((margin) => (
+            <option key={margin.id} value={margin.id}>
+              {margin.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="field">
+        <span>Paper</span>
+        <select
+          aria-label="Paper"
+          value={pageSize}
+          onChange={(event) => {
+            if (isPageSize(event.target.value)) onChange({ pageSize: event.target.value })
+          }}
+        >
+          {pageSizes.map((page) => (
+            <option key={page.id} value={page.id}>
+              {page.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="field">
+        <span>Skills</span>
+        <select aria-label="Skills format" value={skillsFormat} onChange={(event) => {
+          if (event.target.value === 'list' || event.target.value === 'comma') onChange({ skillsFormat: event.target.value })
+        }}>
+          <option value="list">List of items</option>
+          <option value="comma">Separated by commas</option>
+        </select>
+      </label>
+    </div>
+  )
+}
+
+function CvMetadata({
+  cv,
+  sections,
+  selectedVersionId,
+  onMeta,
+  onTemplate,
+  onToggleSection,
+  onSelectVersion,
+}: {
+  cv: Cv
+  sections: CatalogSection[]
+  selectedVersionId: string | null
+  onMeta: (patch: Partial<Pick<Cv, 'title' | 'position' | 'company' | 'posting' | 'summary'>>) => void
+  onTemplate: (templateId: TemplateId) => void
+  onToggleSection: (id: string) => void
+  onSelectVersion: (id: string) => void
+}) {
+  const latestId = cv.versions.at(-1)?.id ?? null
+  const showingId = cv.versions.some((version) => version.id === selectedVersionId) ? selectedVersionId : latestId
+
+  return (
+    <div className="metadata metadata-wide">
+      <p className="menu-label">Object</p>
+      <label className="field">
+        <span>Display name</span>
+        <input value={cv.title} onChange={(event) => onMeta({ title: event.target.value })} />
+      </label>
+      <div className="metadata-grid">
+        <label className="field">
+          <span>Position</span>
+          <input value={cv.position} placeholder="Software Engineer" onChange={(event) => onMeta({ position: event.target.value })} />
+        </label>
+        <label className="field">
+          <span>Company</span>
+          <input value={cv.company} placeholder="Acme" onChange={(event) => onMeta({ company: event.target.value })} />
+        </label>
+      </div>
+      <label className="field">
+        <span>Job posting</span>
+        <textarea
+          className="metadata-posting"
+          value={cv.posting}
+          placeholder="Paste the posting this CV targets…"
+          onChange={(event) => onMeta({ posting: event.target.value })}
+        />
+      </label>
+      <label className="field">
+        <span>Summary</span>
+        <textarea value={cv.summary} onChange={(event) => onMeta({ summary: event.target.value })} />
+      </label>
+      <p className="menu-label">Template</p>
+      <ul className="metadata-list">
+        {templates.map((template) => (
+          <li key={template.id}>
+            <button
+              type="button"
+              className={template.id === cv.templateId ? 'metadata-item is-current' : 'metadata-item'}
+              onClick={() => onTemplate(template.id)}
+            >
+              <span className="metadata-template">
+                <span>{template.name}</span>
+                <span className="template-sections">{template.detail}</span>
+              </span>
+            </button>
+          </li>
+        ))}
+      </ul>
+      <p className="menu-label">Sections</p>
+      {sections.map((section) => {
+        const name = section.name.trim() || 'Section'
+        return (
+          <label key={section.id} className="section-toggle">
+            <input
+              type="checkbox"
+              checked={cv.enabledSections.includes(section.id)}
+              onChange={() => onToggleSection(section.id)}
+            />
+            <span>{name}</span>
+          </label>
+        )
+      })}
+      <p className="menu-label">Versions</p>
+      {cv.versions.length === 0 ? (
+        <p className="metadata-empty">Build saves a version of this CV from your experience.</p>
+      ) : (
+        <ul className="metadata-list">
+          {[...cv.versions].reverse().map((version, reverseIndex) => {
+            const number = cv.versions.length - reverseIndex
+            const when = formatVersionDate(version.createdAt)
+            return (
+              <li key={version.id}>
+                <button
+                  type="button"
+                  className={version.id === showingId ? 'metadata-item is-current' : 'metadata-item'}
+                  onClick={() => onSelectVersion(version.id)}
+                >
+                  <span>Version {number}</span>
+                  {when ? <span className="metadata-when">{when}</span> : null}
+                </button>
+              </li>
+            )
+          })}
+        </ul>
+      )}
+    </div>
+  )
+}
+
+function selectedBulletId(nodes: ResumeNode[], snapshot: Snapshot | null): string {
+  if (!snapshot || snapshot.placeholder) return ''
+  const selected = nodes.find((node) => node.selected && node.type === 'bullet')
+  if (!selected) return ''
+  const built = snapshot.roles.some((role) => role.bullets.some((bullet) => bullet.id === selected.id))
+  return built ? selected.id : ''
+}
+
+function shownSnapshot(cv: Cv, selectedVersionId: string | null): Snapshot | null {
+  if (cv.versions.length === 0) return null
+  const selected = cv.versions.find((version) => version.id === selectedVersionId)
+  return (selected ?? cv.versions[cv.versions.length - 1]).snapshot
+}
+
+function olderVersionNote(cv: Cv, selectedVersionId: string | null): string | null {
+  if (cv.versions.length === 0) return null
+  const index = cv.versions.findIndex((version) => version.id === selectedVersionId)
+  if (index < 0 || index === cv.versions.length - 1) return null
+  return `Version ${index + 1}. Your experience stays in the graph. Build saves a new version.`
+}
+
+function formatVersionDate(iso: string) {
+  if (!iso) return ''
+  const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) return ''
+  return date.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+}
+
+function writeProfile(document: ResumeDocument, profile: Profile): ResumeDocument {
+  return {
+    ...document,
+    profile,
+    nodes: applyProfile(document.nodes, profile),
+    cvs: document.cvs.map((cv) => ({ ...cv, nodes: applyProfile(cv.nodes, profile) })),
+  }
+}
+
+function rememberGraph(document: ResumeDocument): Cv[] {
+  return document.cvs.map((cv) => (
+    cv.id === document.activeCvId ? { ...cv, nodes: document.nodes, edges: document.edges } : cv
+  ))
+}
+
+function deselect(node: ResumeNode): ResumeNode {
+  return { ...node, selected: false }
+}

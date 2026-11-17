@@ -1,0 +1,226 @@
+[
+  {
+    "id": "clean-architecture",
+    "category": "Architecture",
+    "text": "Build an application following clean architecture",
+    "skills": ["Clean architecture"],
+    "aliases": ["clean architecture", "hexagonal architecture", "ports and adapters", "onion architecture"]
+  },
+  {
+    "id": "module-boundaries",
+    "category": "Architecture",
+    "text": "Separate an application into modules with clear boundaries",
+    "skills": ["Software design"],
+    "aliases": ["modular design", "bounded contexts", "separation of concerns"]
+  },
+  {
+    "id": "domain-model",
+    "category": "Architecture",
+    "text": "Model business rules in code",
+    "skills": ["Domain modeling"],
+    "aliases": ["domain model", "domain driven design", "domain-driven design"]
+  },
+  {
+    "id": "rest-api",
+    "category": "APIs",
+    "text": "Build a REST API",
+    "skills": ["REST", "API design"],
+    "aliases": ["experience building api rest", "build rest apis", "restful api", "design rest endpoints"]
+  },
+  {
+    "id": "api-auth",
+    "category": "APIs",
+    "text": "Authenticate and authorize an API",
+    "skills": ["Authentication"],
+    "aliases": ["api authentication", "oauth", "jwt authentication", "authorize api requests"]
+  },
+  {
+    "id": "api-contract",
+    "category": "APIs",
+    "text": "Design an API contract before building it",
+    "skills": ["API design"],
+    "aliases": ["openapi", "api specification", "contract first api"]
+  },
+  {
+    "id": "graphql-api",
+    "category": "APIs",
+    "text": "Build a GraphQL API",
+    "skills": ["GraphQL"],
+    "aliases": ["graphql api", "graphql schema"]
+  },
+  {
+    "id": "sql",
+    "category": "Data",
+    "text": "Write SQL queries against a relational database",
+    "skills": ["SQL"],
+    "aliases": ["sql queries", "write sql", "relational database queries"]
+  },
+  {
+    "id": "schema-design",
+    "category": "Data",
+    "text": "Design a relational database schema",
+    "skills": ["SQL", "Data modeling"],
+    "aliases": ["database schema", "table design", "data modeling"]
+  },
+  {
+    "id": "slow-query",
+    "category": "Data",
+    "text": "Find and fix a slow database query",
+    "skills": ["SQL"],
+    "aliases": ["query optimization", "slow query", "database performance"]
+  },
+  {
+    "id": "reporting-dashboard",
+    "category": "Data",
+    "text": "Build a dashboard for reporting",
+    "skills": ["SQL", "Data visualization"],
+    "aliases": ["reporting dashboard", "project reporting", "data visualization dashboard"]
+  },
+  {
+    "id": "react-ui",
+    "category": "Interface",
+    "text": "Build a web interface in React",
+    "skills": ["React"],
+    "aliases": ["react ui", "react frontend", "build with react"]
+  },
+  {
+    "id": "client-state",
+    "category": "Interface",
+    "text": "Manage state in a client application",
+    "skills": ["React"],
+    "aliases": ["state management", "client state"]
+  },
+  {
+    "id": "accessible-ui",
+    "category": "Interface",
+    "text": "Make an interface accessible",
+    "skills": ["Accessibility"],
+    "aliases": ["accessibility", "wcag", "a11y"]
+  },
+  {
+    "id": "unit-tests",
+    "category": "Quality",
+    "text": "Write unit tests for application code",
+    "skills": ["Testing"],
+    "aliases": ["unit testing", "write unit tests"]
+  },
+  {
+    "id": "integration-tests",
+    "category": "Quality",
+    "text": "Write integration tests for a service",
+    "skills": ["Testing"],
+    "aliases": ["integration testing", "api tests"]
+  },
+  {
+    "id": "code-review",
+    "category": "Quality",
+    "text": "Review another person's code",
+    "skills": ["Code review"],
+    "aliases": ["code review", "pull request review", "review pull requests"]
+  },
+  {
+    "id": "lead-reviews",
+    "category": "Quality",
+    "text": "Lead code reviews and raise the bar for the team",
+    "skills": ["Code review", "Mentoring"],
+    "aliases": ["lead code reviews", "mentor through code review"]
+  },
+  {
+    "id": "ci-pipeline",
+    "category": "Quality",
+    "text": "Automate a build and test pipeline",
+    "skills": ["CI/CD", "Git"],
+    "aliases": ["ci cd", "continuous integration", "build pipeline", "github actions"]
+  },
+  {
+    "id": "production-debug",
+    "category": "Quality",
+    "text": "Debug a problem in a running system",
+    "skills": ["Debugging"],
+    "aliases": ["production debugging", "incident debugging", "troubleshoot production"]
+  },
+  {
+    "id": "ship-production",
+    "category": "Delivery",
+    "text": "Ship a change to production",
+    "skills": ["Delivery"],
+    "aliases": ["deploy to production", "release a feature", "ship to production"]
+  },
+  {
+    "id": "mentor",
+    "category": "Delivery",
+    "text": "Mentor an engineer",
+    "skills": ["Mentoring"],
+    "aliases": ["mentoring", "coach a developer", "mentor engineers"]
+  },
+  {
+    "id": "estimate",
+    "category": "Delivery",
+    "text": "Estimate a piece of work",
+    "skills": ["Planning"],
+    "aliases": ["estimation", "estimate engineering work", "planning work"]
+  },
+  {
+    "id": "documentation",
+    "category": "Delivery",
+    "text": "Write technical documentation",
+    "skills": ["Documentation"],
+    "aliases": ["technical writing", "document a system", "technical documentation"]
+  },
+  {
+    "id": "cross-team",
+    "category": "Delivery",
+    "text": "Coordinate delivery with people outside the engineering team",
+    "skills": ["Coordination"],
+    "aliases": ["coordinate with architects", "stakeholder coordination", "cross functional delivery"]
+  },
+  {
+    "id": "csharp-service",
+    "category": "Platform",
+    "text": "Build a service in C#",
+    "skills": ["C#"],
+    "aliases": ["c sharp service", "dotnet service", "net backend"]
+  },
+  {
+    "id": "node-service",
+    "category": "Platform",
+    "text": "Build a service in Node.js",
+    "skills": ["Node.js"],
+    "aliases": ["node backend", "nodejs api", "node service"]
+  },
+  {
+    "id": "containers",
+    "category": "Platform",
+    "text": "Run an application in containers",
+    "skills": ["Docker"],
+    "aliases": ["docker", "containerize an application", "containers"]
+  },
+  {
+    "id": "cloud-deploy",
+    "category": "Platform",
+    "text": "Deploy an application to a cloud environment",
+    "skills": ["Cloud"],
+    "aliases": ["cloud deployment", "deploy to aws", "deploy to azure"]
+  },
+  {
+    "id": "observability",
+    "category": "Platform",
+    "text": "Add logs and metrics to a running service",
+    "skills": ["Observability"],
+    "aliases": ["observability", "application monitoring", "service logs and metrics"]
+  },
+  {
+    "id": "revit-api",
+    "category": "Domain",
+    "text": "Build a Revit integration with the Revit API",
+    "skills": ["Revit API", "C#"],
+    "aliases": ["revit api", "revit plugin", "revit add in"]
+  },
+  {
+    "id": "bim-automation",
+    "category": "Domain",
+    "text": "Automate a BIM workflow",
+    "skills": ["BIM"],
+    "aliases": ["bim automation", "automate revit", "bim workflow"]
+  }
+]
