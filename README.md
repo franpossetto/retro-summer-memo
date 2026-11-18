@@ -49,8 +49,18 @@ npx supabase db push --remote                        # applies supabase/migratio
 ```
 
 Redirect URLs (Authentication → URL Configuration) must include every origin the app is served
-from, or sign-in links bounce to the Site URL. `http://localhost:4173` (preview) is set; add the
-production URL when there is one.
+from, or sign-in links bounce to the Site URL. Set: Site URL `https://retro-summer-memo.vercel.app`,
+redirects `https://retro-summer-memo.vercel.app` and `http://localhost:4173` (preview).
+
+## Deploy
+
+The frontend is a static build on Vercel (Supabase does not host frontends):
+https://retro-summer-memo.vercel.app. `VITE_SUPABASE_URL` / `VITE_SUPABASE_PUBLISHABLE_KEY` are set
+in the Vercel project (Production); `.vercelignore` keeps local env files out of the upload.
+
+```bash
+vercel deploy --prod      # from the repo root (project already linked in .vercel/)
+```
 
 Do not `supabase config push` this repo's `config.toml` to the cloud: it holds local-dev values
 (email confirmations and MFA off). Run `supabase config diff` first and push only what you mean to.
