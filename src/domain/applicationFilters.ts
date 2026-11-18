@@ -1,7 +1,7 @@
 /**
  * Search, filters and ordering for the applications list. Pure functions only.
  */
-import type { Application, ApplicationStatus } from './applications'
+import type { Application, ApplicationStatus } from './applications.ts'
 
 export type ApplicationScope = 'open' | 'closed' | 'all'
 export type ApplicationSort = 'activity' | 'applied' | 'company'

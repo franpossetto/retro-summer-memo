@@ -65,6 +65,28 @@ vercel deploy --prod      # from the repo root (project already linked in .verce
 Do not `supabase config push` this repo's `config.toml` to the cloud: it holds local-dev values
 (email confirmations and MFA off). Run `supabase config diff` first and push only what you mean to.
 
+## MCP (Claude)
+
+`supabase/functions/mcp` is a remote MCP server so Claude can drive the tracker:
+`https://attrxmtjyjzfgopfrgnk.supabase.co/functions/v1/mcp`.
+
+- Tools: `get_profile`, `list_experiences`, `list_statuses`, `search_applications`, `get_application`,
+  `check_duplicates`, `create_application` (refuses likely duplicates until confirmed),
+  `move_application`, `add_note`, `update_application`, `list_cvs`, `attach_cv`; prompt `nuevo-job`.
+- Auth: Supabase Auth's OAuth 2.1 server with dynamic client registration. Clients are sent to
+  `/oauth/consent` in the app (`src/ui/Consent.tsx`); tools run as the signed-in user, so RLS applies.
+  Any client can register: only approve consent requests you started.
+- The domain rules (`src/domain/applications.ts`, `applicationFilters.ts`) are shared with the app.
+
+Connect: claude.ai → Settings → Connectors → Add custom connector → the URL above (it then works in
+the desktop and mobile apps too). Claude Code: `claude mcp add --transport http cv-tracker <url>`.
+
+```bash
+npx supabase functions serve mcp                    # local: http://127.0.0.1:54321/functions/v1/mcp
+npm run test:mcp                                    # with the function served
+npx supabase functions deploy mcp --remote=attrxmtjyjzfgopfrgnk --no-verify-jwt
+```
+
 ## Checks
 
 ```bash

@@ -6,8 +6,9 @@
 import { createClient } from '@supabase/supabase-js'
 import { createLocalStore } from './adapters/local'
 import { createSupabaseAuth } from './adapters/supabase/auth'
+import { createSupabaseConsent } from './adapters/supabase/oauthConsent'
 import { createSupabaseStore } from './adapters/supabase/store'
-import type { AuthGateway, Session } from './ports/auth'
+import type { AuthGateway, OAuthConsent, Session } from './ports/auth'
 import type { DocumentStore } from './ports/documentStore'
 
 export type Backend =
@@ -15,6 +16,8 @@ export type Backend =
   | {
       kind: 'supabase'
       auth: AuthGateway
+      /** Consent screen for apps connecting through OAuth (Claude via the MCP). */
+      consent: OAuthConsent
       storeFor(session: Session): DocumentStore
       /** Local inbox for sign-in emails while developing against `supabase start`. */
       devMailbox: string
@@ -30,8 +33,10 @@ export function createBackend(env: ImportMetaEnv = import.meta.env): Backend {
     kind: 'supabase',
     auth: createSupabaseAuth(client, {
       google: env.VITE_AUTH_GOOGLE === 'true',
-      redirectTo: window.location.origin,
+      // Back to the same page (e.g. /oauth/consent?authorization_id=…), without any hash.
+      redirectTo: () => window.location.origin + window.location.pathname + window.location.search,
     }),
+    consent: createSupabaseConsent(client),
     storeFor: (session) => createSupabaseStore(client, session.userId),
     devMailbox: env.VITE_DEV_MAILBOX_URL ?? '',
   }

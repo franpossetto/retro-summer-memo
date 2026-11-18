@@ -10,6 +10,7 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:integration": "TEST_SCOPE=integration vitest run",
+    "test:mcp": "TEST_SCOPE=mcp vitest run",
     "db:start": "supabase start -x imgproxy,logflare,vector,supavisor",
     "db:stop": "supabase stop",
     "db:reset": "supabase db reset"

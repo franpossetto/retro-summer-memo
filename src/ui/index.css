@@ -5455,3 +5455,40 @@ button.save-indicator:hover {
     display: none;
   }
 }
+
+/* OAuth consent (Claude via the MCP) */
+
+.consent-card {
+  max-width: 440px;
+}
+
+.consent-list {
+  margin: 0;
+  padding-left: 20px;
+  color: #424a53;
+}
+
+.consent-list li + li {
+  margin-top: 4px;
+}
+
+.consent-meta {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 4px 12px;
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 6px;
+  background: #f6f8fa;
+  font-size: 13px;
+}
+
+.consent-meta dt {
+  color: #59636e;
+}
+
+.consent-meta dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-weight: 550;
+}

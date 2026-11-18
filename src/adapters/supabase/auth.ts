@@ -3,7 +3,8 @@ import type { AuthGateway, Session } from '../../ports/auth'
 
 export function createSupabaseAuth(
   client: SupabaseClient,
-  options: { google: boolean; redirectTo: string },
+  /** `redirectTo` is read at sign-in time: the link must bring the user back to where they were. */
+  options: { google: boolean; redirectTo: () => string },
 ): AuthGateway {
   return {
     providers: { email: true, google: options.google },
@@ -16,11 +17,11 @@ export function createSupabaseAuth(
       return () => data.subscription.unsubscribe()
     },
     async signInWithEmail(email) {
-      const { error } = await client.auth.signInWithOtp({ email, options: { emailRedirectTo: options.redirectTo } })
+      const { error } = await client.auth.signInWithOtp({ email, options: { emailRedirectTo: options.redirectTo() } })
       if (error) throw error
     },
     async signInWithGoogle() {
-      const { error } = await client.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: options.redirectTo } })
+      const { error } = await client.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: options.redirectTo() } })
       if (error) throw error
     },
     async signOut() {

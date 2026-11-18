@@ -5,6 +5,8 @@ import { createBackend, type Backend } from '../backend'
 import type { AuthGateway, Session } from '../ports/auth'
 import type { DocumentStore } from '../ports/documentStore'
 import App from './App'
+import { ConsentScreen } from './Consent'
+import { consentRequestId } from './consentRoute'
 
 export function Root() {
   const [backend] = useState(createBackend)
@@ -16,6 +18,8 @@ type SupabaseBackend = Extract<Backend, { kind: 'supabase' }>
 
 function AuthGate({ backend }: { backend: SupabaseBackend }) {
   const [session, setSession] = useState<Session | null | undefined>(undefined)
+  /** Opened by an OAuth client (Claude via the MCP) asking for access: show the consent step. */
+  const [consentId] = useState(() => consentRequestId())
 
   useEffect(() => {
     let active = true
@@ -30,7 +34,16 @@ function AuthGate({ backend }: { backend: SupabaseBackend }) {
   }, [backend])
 
   if (session === undefined) return <Splash text="Cargando…" />
-  if (!session) return <SignIn auth={backend.auth} devMailbox={backend.devMailbox} />
+  if (!session) {
+    return (
+      <SignIn
+        auth={backend.auth}
+        devMailbox={backend.devMailbox}
+        lede={consentId ? 'Para conectar Claude con tus postulaciones, primero entrá a tu cuenta.' : undefined}
+      />
+    )
+  }
+  if (consentId) return <ConsentScreen consent={backend.consent} authorizationId={consentId} email={session.email} />
   return <SignedIn key={session.userId} backend={backend} session={session} />
 }
 
@@ -101,7 +114,7 @@ function DocumentGate({
   return <App initialDocument={state.opened.document} store={store} account={account} notice={notice} />
 }
 
-function SignIn({ auth, devMailbox }: { auth: AuthGateway; devMailbox: string }) {
+function SignIn({ auth, devMailbox, lede }: { auth: AuthGateway; devMailbox: string; lede?: string }) {
   const [email, setEmail] = useState('')
   const [sentTo, setSentTo] = useState('')
   const [error, setError] = useState('')
@@ -136,6 +149,7 @@ function SignIn({ auth, devMailbox }: { auth: AuthGateway; devMailbox: string })
     <div className="signin">
       <div className="signin-card">
         <h1>Entrar</h1>
+        {lede ? <p>{lede}</p> : null}
         {sentTo ? (
           <>
             <p>
