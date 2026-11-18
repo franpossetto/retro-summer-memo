@@ -134,6 +134,13 @@ export function addApplicationNote(application: Application, text: string, now: 
   }
 }
 
+/** Deletes a note. Status changes stay: they are the history of the process. */
+export function removeApplicationNote(application: Application, eventId: string, now: Date = new Date()): Application {
+  const events = application.events.filter((event) => event.id !== eventId || event.kind !== 'note')
+  if (events.length === application.events.length) return application
+  return { ...application, events, updatedAt: now.toISOString() }
+}
+
 export function updateApplication(
   application: Application,
   patch: Partial<Pick<Application, 'company' | 'title' | 'url' | 'posting' | 'location' | 'appliedOn' | 'attachment'>>,
@@ -142,6 +149,28 @@ export function updateApplication(
   const next = { ...application, ...patch, updatedAt: now.toISOString() }
   if (patch.url !== undefined) next.postingKey = postingKey(patch.url)
   return next
+}
+
+const statusPalette = ['#0969da', '#8250df', '#bf8700', '#bc4c00', '#1b7c83', '#bf3989', '#1a7f37', '#6e7781']
+
+/**
+ * Adds a step to the pipeline. Open steps go after the last open one (before offer, rejected…),
+ * closing steps go at the end. Picks a color not used yet when possible.
+ */
+export function addStatus(
+  statuses: ApplicationStatus[],
+  name: string,
+  kind: ApplicationStatusKind = 'active',
+): { statuses: ApplicationStatus[]; status: ApplicationStatus } {
+  const used = new Set(statuses.map((status) => status.color.toLowerCase()))
+  const color = statusPalette.find((candidate) => !used.has(candidate)) ?? statusPalette[statuses.length % statusPalette.length]
+  const status: ApplicationStatus = { id: crypto.randomUUID(), name: name.trim() || 'Nuevo estado', color, kind }
+  if (kind !== 'active') return { statuses: [...statuses, status], status }
+  let insertAt = 0
+  statuses.forEach((item, index) => {
+    if (item.kind === 'active') insertAt = index + 1
+  })
+  return { statuses: [...statuses.slice(0, insertAt), status, ...statuses.slice(insertAt)], status }
 }
 
 /** Removes a status; applications sitting in it move to `fallbackId` so none is left orphaned. */

@@ -83,8 +83,8 @@ export function RoleGraphs({ graphs, bank, jobs, onChange }: RoleGraphsProps) {
         <div className="role-list">
           {graphs.map((graph) => {
             const role = graph.nodes.find(isRoleNode)
-            const name = role?.data.title.trim() || 'Untitled role'
-            const company = role?.data.company.trim() || 'No company'
+            const name = role?.data.title.trim() || 'Puesto sin título'
+            const company = role?.data.company.trim() || 'Sin empresa'
             const current = graph.id === selected?.id
             return (
               <div key={graph.id} className={current ? 'role-row is-current' : 'role-row'}>
@@ -92,7 +92,7 @@ export function RoleGraphs({ graphs, bank, jobs, onChange }: RoleGraphsProps) {
                   <span className="role-row-title">{name}</span>
                   <span className="role-row-company">{company}</span>
                 </button>
-                <button type="button" className="row-remove is-visible" aria-label={`Delete ${name}`} onClick={() => removeGraph(graph.id)}>
+                <button type="button" className="row-remove is-visible" aria-label={`Eliminar ${name}`} onClick={() => removeGraph(graph.id)}>
                   ×
                 </button>
               </div>
@@ -102,11 +102,11 @@ export function RoleGraphs({ graphs, bank, jobs, onChange }: RoleGraphsProps) {
         {selected ? (
           <RoleEditor key={selected.id} bank={bank} graph={selected} onPatch={(update) => patch(selected.id, update)} />
         ) : (
-          <p className="role-empty">Build a role graph from Personal jobs, then drop it into a CV.</p>
+          <p className="role-empty">Creá un grafo del puesto a partir de tus trabajos en Personal y después sumalo a un CV.</p>
         )}
       </div>
       <button type="button" className="button personal-add" onClick={() => setPicking(true)}>
-        New role
+        Nuevo puesto
       </button>
       {picking ? (
         <PersonalRolePicker
@@ -151,16 +151,16 @@ function PersonalRolePicker({
     <div className="composer-backdrop" onMouseDown={onClose}>
       <div className="composer cv-draft" onMouseDown={(event) => event.stopPropagation()}>
         <div className="composer-head">
-          <h2>New role</h2>
-          <button type="button" className="view-close" aria-label="Close" onClick={onClose}>×</button>
+          <h2>Nuevo puesto</h2>
+          <button type="button" className="view-close" aria-label="Cerrar" onClick={onClose}>×</button>
         </div>
         {options.length === 0 ? (
           <>
             <p className="role-choice-empty">
-              Roles come from Personal → Jobs. Add a company and at least one title there first.
+              Los puestos salen de Personal → Trabajos. Primero agregá ahí una empresa y al menos un puesto.
             </p>
             <div className="composer-actions">
-              <button type="button" className="button" onClick={onClose}>Close</button>
+              <button type="button" className="button" onClick={onClose}>Cerrar</button>
             </div>
           </>
         ) : (
@@ -276,31 +276,31 @@ function RoleEditor({
         {role ? (
           <div className="role-fields">
             <label>
-              Title
-              <input aria-label="Role title" value={role.data.title} placeholder="Software Engineer" onChange={(event) => updateRole({ title: event.target.value })} />
+              Puesto
+              <input aria-label="Título del puesto" value={role.data.title} placeholder="Software Engineer" onChange={(event) => updateRole({ title: event.target.value })} />
             </label>
             <label>
-              Company
-              <input aria-label="Company" value={role.data.company} placeholder="Required company" onChange={(event) => updateRole({ company: event.target.value })} />
+              Empresa
+              <input aria-label="Empresa" value={role.data.company} placeholder="Empresa obligatoria" onChange={(event) => updateRole({ company: event.target.value })} />
             </label>
             <label>
-              Location
-              <input aria-label="Work location" value={role.data.location} placeholder="City, Country" onChange={(event) => updateRole({ location: event.target.value })} />
+              Ubicación
+              <input aria-label="Ubicación del trabajo" value={role.data.location} placeholder="Ciudad, País" onChange={(event) => updateRole({ location: event.target.value })} />
             </label>
             <label>
-              Start
-              <input aria-label="Start" value={role.data.start} placeholder="2022" onChange={(event) => updateRole({ start: event.target.value })} />
+              Inicio
+              <input aria-label="Inicio" value={role.data.start} placeholder="2022" onChange={(event) => updateRole({ start: event.target.value })} />
             </label>
             <label>
-              End
-              <input aria-label="End" value={role.data.end} placeholder="2024" onChange={(event) => updateRole({ end: event.target.value })} />
+              Fin
+              <input aria-label="Fin" value={role.data.end} placeholder="2024" onChange={(event) => updateRole({ end: event.target.value })} />
             </label>
           </div>
         ) : null}
         {bullet ? (
           <label className="role-sentence">
-            Sentence
-            <textarea aria-label="Experience sentence" value={bullet.data.text} onChange={(event) => updateBullet(event.target.value)} />
+            Frase
+            <textarea aria-label="Frase de la experiencia" value={bullet.data.text} onChange={(event) => updateBullet(event.target.value)} />
           </label>
         ) : null}
         <div className="role-canvas">
@@ -353,11 +353,11 @@ function RoleCatalog({
   return (
     <aside className="catalog">
       <label className="catalog-search">
-        <span className="sr-only">Search experiences</span>
-        <input value={query} placeholder="Experience or skill" onChange={(event) => setQuery(event.target.value)} />
+        <span className="sr-only">Buscar experiencias</span>
+        <input value={query} placeholder="Experiencia o skill" onChange={(event) => setQuery(event.target.value)} />
       </label>
       {presets.length === 0 ? (
-        <p className="catalog-empty">No matches.</p>
+        <p className="catalog-empty">Sin resultados.</p>
       ) : (
         <ul className="catalog-list">
           {presets.map((preset) => {
@@ -381,9 +381,9 @@ function RoleCatalog({
 function RoleNodeView({ data, selected }: NodeProps<FlowNode<RoleNode>>) {
   return (
     <div className={selected ? 'flow-node is-selected' : 'flow-node'}>
-      <div className="node-kicker">Role</div>
-      <div className="node-title">{data.title.trim() || 'Untitled role'}</div>
-      <div className="node-meta">{data.company.trim() || 'Company required'}</div>
+      <div className="node-kicker">Puesto</div>
+      <div className="node-title">{data.title.trim() || 'Puesto sin título'}</div>
+      <div className="node-meta">{data.company.trim() || 'Empresa obligatoria'}</div>
       <Handle type="source" position={Position.Right} id="out" />
     </div>
   )
@@ -393,8 +393,8 @@ function BulletNodeView({ data, selected }: NodeProps<FlowNode<BulletNode>>) {
   return (
     <div className={selected ? 'flow-node is-selected' : 'flow-node'}>
       <Handle type="target" position={Position.Left} id="in" />
-      <div className="node-kicker">Experience</div>
-      <div className="node-title">{data.text.trim() || 'Untitled experience'}</div>
+      <div className="node-kicker">Experiencia</div>
+      <div className="node-title">{data.text.trim() || 'Experiencia sin título'}</div>
     </div>
   )
 }

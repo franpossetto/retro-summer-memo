@@ -29,10 +29,10 @@ export function SourceTable({ nodes, edges, onSelect, onToggleHidden }: SourceTa
           <tr>
             <th className="col-index" />
             <th className="col-hide" />
-            <th>Kind</th>
-            <th className="col-detail">Detail</th>
-            <th>Metadata</th>
-            <th>Linked</th>
+            <th>Tipo</th>
+            <th className="col-detail">Detalle</th>
+            <th>Metadatos</th>
+            <th>Conectado</th>
           </tr>
         </thead>
         <tbody>
@@ -45,7 +45,7 @@ export function SourceTable({ nodes, edges, onSelect, onToggleHidden }: SourceTa
                     type="button"
                     className="row-hide"
                     aria-pressed={row.hidden}
-                    aria-label={row.hidden ? `Show ${row.kind}` : `Hide ${row.kind}`}
+                    aria-label={row.hidden ? `Mostrar ${row.kind}` : `Ocultar ${row.kind}`}
                     onClick={(event) => {
                       event.stopPropagation()
                       onToggleHidden(row.id)
@@ -75,7 +75,7 @@ function tableRows(nodes: ResumeNode[], edges: ResumeEdge[]): Row[] {
     rows.push({
       id: person.id,
       kind: 'Personal',
-      detail: person.data.name.trim() || 'Personal data',
+      detail: person.data.name.trim() || 'Datos personales',
       skills: '',
       linked: contact.join(' · '),
       selected: person.selected === true,
@@ -93,8 +93,8 @@ function tableRows(nodes: ResumeNode[], edges: ResumeEdge[]): Row[] {
     const place = [role.data.company.trim(), dates].filter(Boolean).join(' · ')
     rows.push({
       id: role.id,
-      kind: 'Work Experience',
-      detail: role.data.title.trim() || 'Untitled',
+      kind: 'Experiencia laboral',
+      detail: role.data.title.trim() || 'Sin título',
       skills: '',
       linked: place,
       selected: role.selected === true,
@@ -111,12 +111,12 @@ function tableRows(nodes: ResumeNode[], edges: ResumeEdge[]): Row[] {
     for (const child of children) {
       if (used.has(child.id)) continue
       used.add(child.id)
-      rows.push(experienceRow(child, role.data.title.trim() || 'Untitled role'))
+      rows.push(experienceRow(child, role.data.title.trim() || 'Puesto sin título'))
     }
   }
 
   for (const bullet of bullets.filter((node) => !used.has(node.id)).sort(byPosition)) {
-    rows.push(experienceRow(bullet, 'Not linked'))
+    rows.push(experienceRow(bullet, 'Sin conectar'))
   }
 
   const education = nodes.find(isEducationNode)
@@ -126,8 +126,8 @@ function tableRows(nodes: ResumeNode[], edges: ResumeEdge[]): Row[] {
       .filter(Boolean)
     rows.push({
       id: education.id,
-      kind: 'Education',
-      detail: studies.join(' · ') || 'Education',
+      kind: 'Educación',
+      detail: studies.join(' · ') || 'Educación',
       skills: '',
       linked: '',
       selected: education.selected === true,
@@ -143,7 +143,7 @@ function experienceRow(node: ResumeNode & { type: 'bullet' }, linked: string): R
   return {
     id: node.id,
     kind: 'Skill',
-    detail: node.data.text.trim() || 'Empty skill',
+    detail: node.data.text.trim() || 'Skill vacía',
     skills: node.data.skills.join(', '),
     linked,
     selected: node.selected === true,

@@ -7,7 +7,7 @@ export const LOCAL_STORAGE_KEY = 'resume.v1'
 /** Document kept in this browser's localStorage (the app's original storage). */
 export function createLocalStore(storage: Storage = window.localStorage, key = LOCAL_STORAGE_KEY): DocumentStore {
   return {
-    label: 'this browser',
+    label: 'este navegador',
     async load() {
       return readStoredDocument(storage, key)
     },

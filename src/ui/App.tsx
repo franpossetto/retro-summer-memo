@@ -10,7 +10,9 @@ import {
 } from '@xyflow/react'
 import { type Experience } from '../domain/experiences'
 import { GraphCanvas, loadGraphPanelsOpen, type GraphPanelsOpen } from './components/GraphCanvas'
-import { Home, type CvDraft } from './components/Home'
+import { Home, type ComposerSeed, type CvDraft } from './components/Home'
+import { Applications, type TrackerData } from './components/applications/Applications'
+import { updateApplication, type Application } from '../domain/applications'
 import { ResumePreview } from './components/ResumePreview'
 import { Sidebar } from './components/Sidebar'
 import { downloadDoc, downloadPdf } from './download'
@@ -123,9 +125,11 @@ export default function App({ initialDocument, store, account, notice }: AppProp
   const { doc, setDoc, status: saveStatus, retry: retrySave } = useDocumentSync(store, initialDocument)
   const [noticeOpen, setNoticeOpen] = useState(Boolean(notice))
   const [screen, setScreen] = useState<'home' | 'workspace'>('home')
-  const [homeSection, setHomeSection] = useState<'projects' | 'personal' | 'experience' | 'library'>('projects')
+  const [homeSection, setHomeSection] = useState<'applications' | 'projects' | 'personal' | 'experience' | 'library'>('applications')
   const [libraryKey, setLibraryKey] = useState(0)
   const [composerOpen, setComposerOpen] = useState(false)
+  /** Set while the new-CV wizard was opened from a job application: the CV gets attached to it. */
+  const [cvSeed, setCvSeed] = useState<(ComposerSeed & { applicationId: string }) | null>(null)
   const [views, setViews] = useState<Views>({ preview: true, style: false, graph: true, table: false })
   const [graphPanels, setGraphPanels] = useState<GraphPanelsOpen>(loadGraphPanelsOpen)
   const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null)
@@ -473,13 +477,14 @@ export default function App({ initialDocument, store, account, notice }: AppProp
     })
     setSelectedVersionId(null)
     setMetadataOpen(false)
-    setComposerOpen(false)
+    closeComposer()
     setScreen('workspace')
   }
 
   function createCv(draft: CvDraft) {
     const id = crypto.randomUUID()
     const versionId = crypto.randomUUID()
+    const forApplication = cvSeed?.applicationId
     setDoc((current) => {
       const version: CvVersion = { id: versionId, createdAt: new Date().toISOString(), snapshot: emptySnapshot() }
       const selected = draft.experienceIds
@@ -495,7 +500,7 @@ export default function App({ initialDocument, store, account, notice }: AppProp
         : ['personal']
       const next: Cv = {
         id,
-        title: draft.title.trim() || 'Untitled',
+        title: draft.title.trim() || 'Sin título',
         position: draft.position.trim(),
         company: draft.company.trim(),
         posting: draft.posting,
@@ -517,13 +522,52 @@ export default function App({ initialDocument, store, account, notice }: AppProp
         activeCvId: id,
         nodes: graph.nodes,
         edges: graph.edges,
+        // Latest version ('') until the user pins the one they actually sent.
+        applications: forApplication
+          ? current.applications.map((application) =>
+              application.id === forApplication
+                ? updateApplication(application, { attachment: { kind: 'cv', cvId: id, versionId: '' } })
+                : application,
+            )
+          : current.applications,
       }
     })
     setSelectedVersionId(versionId)
     setMetadataOpen(false)
-    setComposerOpen(false)
+    closeComposer()
     setViews((current) => ({ ...current, preview: true, graph: true }))
     setScreen('workspace')
+  }
+
+  function closeComposer() {
+    setComposerOpen(false)
+    setCvSeed(null)
+  }
+
+  function changeTracker(update: (current: TrackerData) => TrackerData) {
+    setDoc((current) => ({
+      ...current,
+      ...update({ applications: current.applications, applicationStatuses: current.applicationStatuses }),
+    }))
+  }
+
+  function openCvVersion(cvId: string, versionId: string) {
+    openCv(cvId)
+    setSelectedVersionId(versionId || null)
+  }
+
+  /** New-CV wizard prefilled from a job application; the CV it creates gets attached to it. */
+  function buildCvFor(application: Application) {
+    setCvSeed({
+      applicationId: application.id,
+      title: [application.company, application.title].filter(Boolean).join(' — '),
+      position: application.title,
+      company: application.company,
+      posting: application.posting,
+    })
+    setHomeSection('projects')
+    setScreen('home')
+    setComposerOpen(true)
   }
 
   function deleteCv(id: string) {
@@ -758,12 +802,12 @@ export default function App({ initialDocument, store, account, notice }: AppProp
 
   const propsBar = layout.props === 'top' || layout.props === 'bottom'
   const stylePane = views.style ? (
-    <section className="view-pane is-style" aria-label="Style">
+    <section className="view-pane is-style" aria-label="Estilo">
       <div className="view-tab is-draggable" draggable onDragStart={(event) => beginDrag('style', event)} onDragEnd={endDrag}>
         <span className="view-grab">
-          Style
+          Estilo
         </span>
-        <button type="button" className="view-close" aria-label="Close style" onClick={() => toggleView('style')}>
+        <button type="button" className="view-close" aria-label="Cerrar estilo" onClick={() => toggleView('style')}>
           ×
         </button>
       </div>
@@ -789,15 +833,15 @@ export default function App({ initialDocument, store, account, notice }: AppProp
   const previewPane = (
     <section
       className={dropPane === 'preview' ? 'view-pane is-preview is-drop' : 'view-pane is-preview'}
-      aria-label="Preview"
+      aria-label="Vista previa"
       style={split ? { flex: 'none', width: `${previewShare}%` } : undefined}
       {...mainDrag('preview')}
     >
       <div className="view-tab is-draggable" draggable onDragStart={(event) => beginDrag('preview', event)} onDragEnd={endDrag}>
         <span className="view-grab">
-          Preview
+          Vista previa
         </span>
-        <button type="button" className="view-close" aria-label="Close preview" onClick={() => toggleView('preview')}>
+        <button type="button" className="view-close" aria-label="Cerrar vista previa" onClick={() => toggleView('preview')}>
           ×
         </button>
       </div>
@@ -824,14 +868,14 @@ export default function App({ initialDocument, store, account, notice }: AppProp
   const graphPane = (
     <section
       className={dropPane === 'graph' ? 'view-pane is-graph is-drop' : 'view-pane is-graph'}
-      aria-label="Graph"
+      aria-label="Grafo"
       {...mainDrag('graph')}
     >
       <div className="view-tab is-draggable" draggable onDragStart={(event) => beginDrag('graph', event)} onDragEnd={endDrag}>
         <span className="view-grab">
-          Graph
+          Grafo
         </span>
-        <button type="button" className="view-close" aria-label="Close graph" onClick={() => toggleView('graph')}>
+        <button type="button" className="view-close" aria-label="Cerrar grafo" onClick={() => toggleView('graph')}>
           ×
         </button>
       </div>
@@ -842,12 +886,12 @@ export default function App({ initialDocument, store, account, notice }: AppProp
   )
 
   const tablePane = (
-    <section className="view-pane is-graph" aria-label="Table">
+    <section className="view-pane is-graph" aria-label="Tabla">
       <div className="view-tab is-draggable" draggable onDragStart={(event) => beginDrag('graph', event)} onDragEnd={endDrag}>
         <span className="view-grab">
-          Table
+          Tabla
         </span>
-        <button type="button" className="view-close" aria-label="Close table" onClick={() => toggleView('table')}>
+        <button type="button" className="view-close" aria-label="Cerrar tabla" onClick={() => toggleView('table')}>
           ×
         </button>
       </div>
@@ -861,23 +905,28 @@ export default function App({ initialDocument, store, account, notice }: AppProp
     <div className="app">
       <Sidebar
         section={inWorkspace ? 'workspace' : homeSection}
+        onApplications={() => {
+          closeComposer()
+          setHomeSection('applications')
+          setScreen('home')
+        }}
         onProjects={() => {
-          setComposerOpen(false)
+          closeComposer()
           setHomeSection('projects')
           setScreen('home')
         }}
         onPersonal={() => {
-          setComposerOpen(false)
+          closeComposer()
           setHomeSection('personal')
           setScreen('home')
         }}
         onExperience={() => {
-          setComposerOpen(false)
+          closeComposer()
           setHomeSection('experience')
           setScreen('home')
         }}
         onLibrary={() => {
-          setComposerOpen(false)
+          closeComposer()
           setLibraryKey((key) => key + 1)
           setHomeSection('library')
           setScreen('home')
@@ -890,7 +939,7 @@ export default function App({ initialDocument, store, account, notice }: AppProp
       {notice && noticeOpen ? (
         <div className="app-notice" role="status">
           <span>{notice}</span>
-          <button type="button" className="view-close" aria-label="Dismiss" onClick={() => setNoticeOpen(false)}>
+          <button type="button" className="view-close" aria-label="Cerrar" onClick={() => setNoticeOpen(false)}>
             ×
           </button>
         </div>
@@ -904,13 +953,13 @@ export default function App({ initialDocument, store, account, notice }: AppProp
             aria-expanded={metadataOpen}
             onClick={() => setMetadataOpen((open) => !open)}
           >
-            <span className="cv-title">{cv.title.trim() || 'Untitled'}</span>
+            <span className="cv-title">{cv.title.trim() || 'Sin título'}</span>
             {cv.position.trim() || cv.company.trim() ? (
               <span className="cv-subtitle">
                 {[cv.position.trim(), cv.company.trim()].filter(Boolean).join(' · ')}
               </span>
             ) : (
-              <span className="cv-subtitle is-muted">Add position & posting</span>
+              <span className="cv-subtitle is-muted">Agregá puesto y aviso</span>
             )}
           </button>
           {metadataOpen ? (
@@ -927,48 +976,48 @@ export default function App({ initialDocument, store, account, notice }: AppProp
         </div>
         <div className="topbar-gap" />
         <details ref={viewsRef} className="views-anchor">
-          <summary className="view-toggle views-trigger" aria-label="Views"><ViewsIcon /><span>Views</span></summary>
-          <div className="view-toggles views-menu" role="toolbar" aria-label="Available views">
-          <div className="views-menu-title">Available views</div>
+          <summary className="view-toggle views-trigger" aria-label="Vistas"><ViewsIcon /><span>Vistas</span></summary>
+          <div className="view-toggles views-menu" role="toolbar" aria-label="Vistas disponibles">
+          <div className="views-menu-title">Vistas disponibles</div>
           <button
             type="button"
             className={views.preview ? 'view-toggle is-open' : 'view-toggle'}
             aria-pressed={views.preview}
-            aria-label="Preview"
+            aria-label="Vista previa"
             onClick={() => toggleView('preview')}
           >
             <PreviewIcon />
-            <span>Preview</span>
+            <span>Vista previa</span>
           </button>
           <button
             type="button"
             className={views.style ? 'view-toggle is-open' : 'view-toggle'}
             aria-pressed={views.style}
-            aria-label="Style"
+            aria-label="Estilo"
             onClick={() => toggleView('style')}
           >
             <StyleIcon />
-            <span>Style</span>
+            <span>Estilo</span>
           </button>
           <button
             type="button"
             className={views.graph ? 'view-toggle is-open' : 'view-toggle'}
             aria-pressed={views.graph}
-            aria-label="Graph"
+            aria-label="Grafo"
             onClick={() => toggleView('graph')}
           >
             <GraphIcon />
-            <span>Graph</span>
+            <span>Grafo</span>
           </button>
           <button
             type="button"
             className={views.table ? 'view-toggle is-open' : 'view-toggle'}
             aria-pressed={views.table}
-            aria-label="Table"
+            aria-label="Tabla"
             onClick={() => toggleView('table')}
           >
             <TableIcon />
-            <span>Table</span>
+            <span>Tabla</span>
           </button>
           </div>
         </details>
@@ -976,10 +1025,10 @@ export default function App({ initialDocument, store, account, notice }: AppProp
           <button
             type="button"
             className="view-toggle"
-            aria-label="Download"
+            aria-label="Descargar"
             aria-expanded={downloadOpen}
             aria-haspopup="menu"
-            data-tip={downloadOpen ? undefined : 'Download'}
+            data-tip={downloadOpen ? undefined : 'Descargar'}
             onClick={() => setDownloadOpen((open) => !open)}
           >
             <DownloadIcon />
@@ -1004,12 +1053,21 @@ export default function App({ initialDocument, store, account, notice }: AppProp
             </div>
           ) : null}
         </div>
-        <button type="button" className="button primary build-button" aria-label="Build" data-tip="Build" onClick={build}>
+        <button type="button" className="button primary build-button" aria-label="Generar" data-tip="Generar" onClick={build}>
           <BuildIcon />
         </button>
       </header>
       ) : null}
-      {!inWorkspace && homeSection === 'experience' ? (
+      {!inWorkspace && homeSection === 'applications' ? (
+        <Applications
+          applications={doc.applications}
+          statuses={doc.applicationStatuses}
+          cvs={doc.cvs}
+          onChange={changeTracker}
+          onOpenCv={openCvVersion}
+          onBuildCv={buildCvFor}
+        />
+      ) : !inWorkspace && homeSection === 'experience' ? (
         <ExperienceMaster
           bank={doc.bank}
           answers={doc.knowledge}
@@ -1034,7 +1092,8 @@ export default function App({ initialDocument, store, account, notice }: AppProp
           knowledge={doc.knowledge}
           section={homeSection === 'personal' ? 'personal' : 'projects'}
           composerOpen={composerOpen}
-          onComposerOpenChange={setComposerOpen}
+          composerSeed={cvSeed}
+          onComposerOpenChange={(open) => (open ? setComposerOpen(true) : closeComposer())}
           profile={doc.profile}
           onProfile={updateProfile}
           onOpen={openCv}
@@ -1059,7 +1118,7 @@ export default function App({ initialDocument, store, account, notice }: AppProp
                       role="separator"
                       tabIndex={0}
                       aria-orientation="vertical"
-                      aria-label="Resize views"
+                      aria-label="Redimensionar vistas"
                       onPointerDown={onSashPointerDown}
                       onPointerMove={onSashPointerMove}
                     />
@@ -1068,7 +1127,7 @@ export default function App({ initialDocument, store, account, notice }: AppProp
                 </Fragment>
               )
             })}
-            {!views.preview && !views.style && !views.graph && !views.table ? <p className="workspace-empty">Open Preview, Style, Graph, or Table.</p> : null}
+            {!views.preview && !views.style && !views.graph && !views.table ? <p className="workspace-empty">Abrí Vista previa, Estilo, Grafo o Tabla.</p> : null}
           </div>
           {layout.props === 'right' ? stylePane : null}
         </div>
@@ -1175,6 +1234,8 @@ function BuildIcon() {
   )
 }
 
+const dockLabels: Record<DockEdge, string> = { left: 'Izquierda', right: 'Derecha', top: 'Arriba', bottom: 'Abajo' }
+
 function DockZones({
   hot,
   onHot,
@@ -1200,7 +1261,7 @@ function DockZones({
             onDock(edge)
           }}
         >
-          {edge}
+          {dockLabels[edge]}
         </div>
       ))}
     </>
@@ -1234,9 +1295,9 @@ function StylePane({
   return (
     <div className={bar ? 'style-pane is-bar' : 'style-pane'}>
       <label className="field">
-        <span>Template</span>
+        <span>Plantilla</span>
         <select
-          aria-label="Template"
+          aria-label="Plantilla"
           value={templateId}
           onChange={(event) => {
             const template = templates.find((item) => item.id === event.target.value)
@@ -1251,9 +1312,9 @@ function StylePane({
         </select>
       </label>
       <label className="field">
-        <span>Font</span>
+        <span>Fuente</span>
         <select
-          aria-label="Font"
+          aria-label="Fuente"
           value={fontId}
           style={{ fontFamily: family }}
           onChange={(event) => {
@@ -1268,9 +1329,9 @@ function StylePane({
         </select>
       </label>
       <label className="field">
-        <span>Size</span>
+        <span>Tamaño</span>
         <select
-          aria-label="Font size"
+          aria-label="Tamaño de fuente"
           value={fontSize}
           onChange={(event) => {
             const size = Number(event.target.value)
@@ -1285,9 +1346,9 @@ function StylePane({
         </select>
       </label>
       <label className="field">
-        <span>Spacing</span>
+        <span>Espaciado</span>
         <select
-          aria-label="Line spacing"
+          aria-label="Interlineado"
           value={lineHeight}
           onChange={(event) => {
             const spacing = Number(event.target.value)
@@ -1302,9 +1363,9 @@ function StylePane({
         </select>
       </label>
       <label className="field">
-        <span>Margins</span>
+        <span>Márgenes</span>
         <select
-          aria-label="Margins"
+          aria-label="Márgenes"
           value={marginId}
           onChange={(event) => {
             if (isMarginId(event.target.value)) onChange({ marginId: event.target.value })
@@ -1318,9 +1379,9 @@ function StylePane({
         </select>
       </label>
       <label className="field">
-        <span>Paper</span>
+        <span>Papel</span>
         <select
-          aria-label="Paper"
+          aria-label="Papel"
           value={pageSize}
           onChange={(event) => {
             if (isPageSize(event.target.value)) onChange({ pageSize: event.target.value })
@@ -1335,11 +1396,11 @@ function StylePane({
       </label>
       <label className="field">
         <span>Skills</span>
-        <select aria-label="Skills format" value={skillsFormat} onChange={(event) => {
+        <select aria-label="Formato de skills" value={skillsFormat} onChange={(event) => {
           if (event.target.value === 'list' || event.target.value === 'comma') onChange({ skillsFormat: event.target.value })
         }}>
-          <option value="list">List of items</option>
-          <option value="comma">Separated by commas</option>
+          <option value="list">Lista de ítems</option>
+          <option value="comma">Separadas por comas</option>
         </select>
       </label>
     </div>
@@ -1368,35 +1429,35 @@ function CvMetadata({
 
   return (
     <div className="metadata metadata-wide">
-      <p className="menu-label">Object</p>
+      <p className="menu-label">Datos</p>
       <label className="field">
-        <span>Display name</span>
+        <span>Nombre visible</span>
         <input value={cv.title} onChange={(event) => onMeta({ title: event.target.value })} />
       </label>
       <div className="metadata-grid">
         <label className="field">
-          <span>Position</span>
+          <span>Puesto</span>
           <input value={cv.position} placeholder="Software Engineer" onChange={(event) => onMeta({ position: event.target.value })} />
         </label>
         <label className="field">
-          <span>Company</span>
+          <span>Empresa</span>
           <input value={cv.company} placeholder="Acme" onChange={(event) => onMeta({ company: event.target.value })} />
         </label>
       </div>
       <label className="field">
-        <span>Job posting</span>
+        <span>Aviso</span>
         <textarea
           className="metadata-posting"
           value={cv.posting}
-          placeholder="Paste the posting this CV targets…"
+          placeholder="Pegá el aviso al que apunta este CV…"
           onChange={(event) => onMeta({ posting: event.target.value })}
         />
       </label>
       <label className="field">
-        <span>Summary</span>
+        <span>Resumen</span>
         <textarea value={cv.summary} onChange={(event) => onMeta({ summary: event.target.value })} />
       </label>
-      <p className="menu-label">Template</p>
+      <p className="menu-label">Plantilla</p>
       <ul className="metadata-list">
         {templates.map((template) => (
           <li key={template.id}>
@@ -1413,9 +1474,9 @@ function CvMetadata({
           </li>
         ))}
       </ul>
-      <p className="menu-label">Sections</p>
+      <p className="menu-label">Secciones</p>
       {sections.map((section) => {
-        const name = section.name.trim() || 'Section'
+        const name = section.name.trim() || 'Sección'
         return (
           <label key={section.id} className="section-toggle">
             <input
@@ -1427,9 +1488,9 @@ function CvMetadata({
           </label>
         )
       })}
-      <p className="menu-label">Versions</p>
+      <p className="menu-label">Versiones</p>
       {cv.versions.length === 0 ? (
-        <p className="metadata-empty">Build saves a version of this CV from your experience.</p>
+        <p className="metadata-empty">Generar guarda una versión de este CV a partir de tu experiencia.</p>
       ) : (
         <ul className="metadata-list">
           {[...cv.versions].reverse().map((version, reverseIndex) => {
@@ -1442,7 +1503,7 @@ function CvMetadata({
                   className={version.id === showingId ? 'metadata-item is-current' : 'metadata-item'}
                   onClick={() => onSelectVersion(version.id)}
                 >
-                  <span>Version {number}</span>
+                  <span>Versión {number}</span>
                   {when ? <span className="metadata-when">{when}</span> : null}
                 </button>
               </li>
@@ -1472,14 +1533,14 @@ function olderVersionNote(cv: Cv, selectedVersionId: string | null): string | nu
   if (cv.versions.length === 0) return null
   const index = cv.versions.findIndex((version) => version.id === selectedVersionId)
   if (index < 0 || index === cv.versions.length - 1) return null
-  return `Version ${index + 1}. Your experience stays in the graph. Build saves a new version.`
+  return `Versión ${index + 1}. Tu experiencia sigue en el grafo. Generar guarda una versión nueva.`
 }
 
 function formatVersionDate(iso: string) {
   if (!iso) return ''
   const date = new Date(iso)
   if (Number.isNaN(date.getTime())) return ''
-  return date.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+  return date.toLocaleString('es-AR', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
 }
 
 function writeProfile(document: ResumeDocument, profile: Profile): ResumeDocument {

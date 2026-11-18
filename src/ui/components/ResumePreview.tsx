@@ -217,12 +217,12 @@ function EmptyLink() {
   return (
     <div className="empty-link">
       <div className="empty-link-preview" aria-hidden="true">
-        <span className="empty-link-card">Work Experience</span>
+        <span className="empty-link-card">Experiencia laboral</span>
         <span className="empty-link-join" />
         <span className="empty-link-card">Skill</span>
       </div>
-      <p className="empty-link-title">Nothing linked yet</p>
-      <p className="empty-link-copy">Add work experience, link a skill, then build.</p>
+      <p className="empty-link-title">Todavía no hay nada conectado</p>
+      <p className="empty-link-copy">Agregá experiencia laboral, conectá una skill y generá.</p>
     </div>
   )
 }

@@ -35,6 +35,21 @@ On first sign-in, data saved in this browser by the older localStorage version i
 
 Without `VITE_SUPABASE_*` the app runs entirely in the browser, as before.
 
+## Cloud project
+
+`npm run dev` talks to the local stack (`.env.local`); `npm run build` / `npm run preview` use
+`.env.production.local` (cloud URL + publishable key, gitignored). The secret key is never needed
+by the app: Edge Functions (the MCP) receive it from Supabase itself.
+
+```bash
+npx supabase login                                   # once, opens the browser
+npx supabase link --project-ref attrxmtjyjzfgopfrgnk
+npx supabase db push                                 # applies supabase/migrations
+```
+
+In the dashboard, Authentication → URL Configuration: add `http://localhost:4173` (preview) and,
+later, the production URL to the redirect URLs, or sign-in links bounce to the Site URL.
+
 ## Checks
 
 ```bash

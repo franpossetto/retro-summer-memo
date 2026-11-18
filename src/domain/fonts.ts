@@ -47,7 +47,7 @@ export function isLineSpacing(value: unknown): value is LineSpacing {
 }
 
 export const pageSizes = [
-  { id: 'letter', name: 'Letter', width: 816, height: 1056 },
+  { id: 'letter', name: 'Carta', width: 816, height: 1056 },
   { id: 'a4', name: 'A4', width: 794, height: 1123 },
 ] as const
 
@@ -62,9 +62,9 @@ export function pageSpec(id: PageSize) {
 }
 
 export const margins = [
-  { id: 'narrow', name: 'Narrow' },
-  { id: 'normal', name: 'Normal' },
-  { id: 'wide', name: 'Wide' },
+  { id: 'narrow', name: 'Angostos' },
+  { id: 'normal', name: 'Normales' },
+  { id: 'wide', name: 'Amplios' },
 ] as const
 
 export type MarginId = (typeof margins)[number]['id']

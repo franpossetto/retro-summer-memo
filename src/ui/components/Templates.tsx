@@ -38,19 +38,19 @@ export function Library({ sections, roleGraphs, bank, jobs, onChange, onChangeRo
     return (
       <div className="home">
         <div className="home-head">
-          <h1>Library</h1>
+          <h1>Biblioteca</h1>
         </div>
         <ul className="project-grid">
           <li>
             <button type="button" className="project-card library-card" onClick={() => setPage('sections')}>
-              <span className="project-title">Sections</span>
-              <span className="project-meta">{countLabel(sections.length, 'section')}</span>
+              <span className="project-title">Secciones</span>
+              <span className="project-meta">{countLabel(sections.length, 'sección', 'secciones')}</span>
             </button>
           </li>
           <li>
             <button type="button" className="project-card library-card" onClick={() => setPage('roles')}>
-              <span className="project-title">Roles</span>
-              <span className="project-meta">{countLabel(roleGraphs.length, 'role')}</span>
+              <span className="project-title">Puestos</span>
+              <span className="project-meta">{countLabel(roleGraphs.length, 'puesto', 'puestos')}</span>
             </button>
           </li>
         </ul>
@@ -62,9 +62,9 @@ export function Library({ sections, roleGraphs, bank, jobs, onChange, onChangeRo
     <div className="home">
       <div className="home-head">
         <button type="button" className="library-back" onClick={() => setPage('cards')}>
-          Library
+          Biblioteca
         </button>
-        <h1>{page === 'sections' ? 'Sections' : 'Roles'}</h1>
+        <h1>{page === 'sections' ? 'Secciones' : 'Puestos'}</h1>
       </div>
       {page === 'roles' ? <RoleGraphs graphs={roleGraphs} bank={bank} jobs={jobs} onChange={onChangeRoles} /> : (
       <>
@@ -73,39 +73,39 @@ export function Library({ sections, roleGraphs, bank, jobs, onChange, onChangeRo
           <thead>
             <tr>
               <th className="col-index" />
-              <th>Section</th>
-              <th>Description</th>
-              <th className="col-active">Active</th>
+              <th>Sección</th>
+              <th>Descripción</th>
+              <th className="col-active">Activa</th>
               <th className="col-remove" />
             </tr>
           </thead>
           <tbody>
             {sections.map((section, index) => {
-              const name = section.name.trim() || 'section'
+              const name = section.name.trim() || 'sección'
               return (
                 <tr key={section.id}>
                   <td className="col-index">{index + 1}</td>
                   <td>
                     <input
                       ref={section.id === draftId ? draftRef : undefined}
-                      aria-label={`Section ${index + 1}`}
+                      aria-label={`Sección ${index + 1}`}
                       value={section.name}
-                      placeholder="Awards"
+                      placeholder="Premios"
                       onChange={(event) => patch(section.id, { name: event.target.value })}
                     />
                   </td>
                   <td>
                     <input
-                      aria-label={`Description ${index + 1}`}
+                      aria-label={`Descripción ${index + 1}`}
                       value={section.description}
-                      placeholder="Description"
+                      placeholder="Descripción"
                       onChange={(event) => patch(section.id, { description: event.target.value })}
                     />
                   </td>
                   <td className="col-active">
                     <input
                       type="checkbox"
-                      aria-label={`Active ${name}`}
+                      aria-label={`Activa: ${name}`}
                       checked={section.active}
                       onChange={(event) => patch(section.id, { active: event.target.checked })}
                     />
@@ -115,7 +115,7 @@ export function Library({ sections, roleGraphs, bank, jobs, onChange, onChangeRo
                       <button
                         type="button"
                         className="row-remove"
-                        aria-label={`Delete ${name}`}
+                        aria-label={`Eliminar ${name}`}
                         onClick={() => onChange((current) => current.filter((item) => item.id !== section.id))}
                       >
                         ×
@@ -129,7 +129,7 @@ export function Library({ sections, roleGraphs, bank, jobs, onChange, onChangeRo
         </table>
       </div>
       <button type="button" className="button personal-add" onClick={addSection}>
-        New section
+        Nueva sección
       </button>
       </>
       )}
@@ -137,6 +137,6 @@ export function Library({ sections, roleGraphs, bank, jobs, onChange, onChangeRo
   )
 }
 
-function countLabel(count: number, noun: string) {
-  return `${count} ${noun}${count === 1 ? '' : 's'}`
+function countLabel(count: number, singular: string, plural: string) {
+  return `${count} ${count === 1 ? singular : plural}`
 }

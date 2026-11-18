@@ -67,9 +67,9 @@ export function applyLinkedInImport(
 export function linkedInImportSummary(imported: LinkedInImport) {
   const parts: string[] = []
   if (imported.name) parts.push(imported.name)
-  if (imported.jobs.length) parts.push(`${imported.jobs.length} compan${imported.jobs.length === 1 ? 'y' : 'ies'}`)
-  if (imported.education.length) parts.push(`${imported.education.length} education`)
-  if (imported.linkedInUrl && parts.length === 0) parts.push('LinkedIn link')
+  if (imported.jobs.length) parts.push(`${imported.jobs.length} ${imported.jobs.length === 1 ? 'empresa' : 'empresas'}`)
+  if (imported.education.length) parts.push(`${imported.education.length} ${imported.education.length === 1 ? 'estudio' : 'estudios'}`)
+  if (imported.linkedInUrl && parts.length === 0) parts.push('link de LinkedIn')
   return parts.join(' · ')
 }
 

@@ -17,9 +17,9 @@ export const experienceLevels: {
   /** Full sentence for the test */
   prompt: string
 }[] = [
-  { level: 0, label: 'No experience', prompt: 'I have no experience' },
-  { level: 1, label: 'Personal', prompt: 'I used this in personal projects' },
-  { level: 2, label: 'Professional', prompt: 'I have professional experience' },
+  { level: 0, label: 'Sin experiencia', prompt: 'No tengo experiencia' },
+  { level: 1, label: 'Personal', prompt: 'La usé en proyectos personales' },
+  { level: 2, label: 'Profesional', prompt: 'Tengo experiencia profesional' },
 ]
 
 /** Seed bank shipped with the app. Documents keep an editable copy. */

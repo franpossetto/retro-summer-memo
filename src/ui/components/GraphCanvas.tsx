@@ -759,14 +759,14 @@ function GraphEditor({
           <span className="view-grab">{panelTitle(id, selectedNode, sections)}</span>
           <div className="view-tab-actions">
             {id === 'inspector' && selectedNode && selectedNode.type !== 'bullet' ? (
-              <IconButton label="Delete" onClick={() => onDeleteNode(selectedNode.id)}>
+              <IconButton label="Eliminar" onClick={() => onDeleteNode(selectedNode.id)}>
                 <TrashIcon />
               </IconButton>
             ) : null}
             <button
               type="button"
               className="view-close"
-              aria-label={`Close ${panelTitle(id, selectedNode, sections)}`}
+              aria-label={`Cerrar ${panelTitle(id, selectedNode, sections)}`}
               onClick={() => togglePanel(id)}
             >
               ×
@@ -1050,7 +1050,7 @@ function InspectorBody({
   onUpdateEducation: (id: string, patch: Partial<EducationData>) => void
 }) {
   if (!selectedNode) {
-    return <p className="inspector-empty">Select a node to edit its properties.</p>
+    return <p className="inspector-empty">Seleccioná un nodo para editar sus propiedades.</p>
   }
   if (selectedNode.type === 'person') return <PersonInspector node={selectedNode} onUpdate={onUpdatePerson} />
   if (selectedNode.type === 'role') return <RoleInspector node={selectedNode} onUpdate={onUpdateRole} />
@@ -1058,16 +1058,16 @@ function InspectorBody({
   if (selectedNode.type === 'education') return <EducationInspector node={selectedNode} onUpdate={onUpdateEducation} />
   return (
     <p className="inspector-empty">
-      Pick a skill from the list. Drag a work experience port out and release to place one.
+      Elegí una skill de la lista. Arrastrá el puerto de una experiencia laboral y soltalo para ubicar una.
     </p>
   )
 }
 
 function panelTitle(id: GraphPanelId, selectedNode: ResumeNode | null, sections: CatalogSection[]) {
-  if (id === 'catalog') return 'Catalog'
+  if (id === 'catalog') return 'Catálogo'
   if (id === 'skills') return 'Skills'
-  if (id === 'experience') return 'Work Experience'
-  return selectedNode ? inspectorTitle(selectedNode, sections) : 'Properties'
+  if (id === 'experience') return 'Experiencia laboral'
+  return selectedNode ? inspectorTitle(selectedNode, sections) : 'Propiedades'
 }
 
 function byGraphPosition<T extends { id: string; position: XYPosition }>(a: T, b: T) {
@@ -1088,7 +1088,7 @@ function SkillsPanel({ nodes, onSelect }: { nodes: ResumeNode[]; onSelect: (id: 
     }
   }
   const list = [...entries.values()].sort((left, right) => left.name.localeCompare(right.name))
-  if (list.length === 0) return <p className="inspector-empty">No skills added yet.</p>
+  if (list.length === 0) return <p className="inspector-empty">Todavía no hay skills.</p>
   return (
     <div className="graph-section-list">
       {list.map((entry) => (
@@ -1111,7 +1111,7 @@ function WorkExperiencePanel({
   onSelect: (id: string) => void
 }) {
   const roles = nodes.filter((node): node is RoleNode => node.type === 'role' && !node.data.pending).sort(byGraphPosition)
-  if (roles.length === 0) return <p className="inspector-empty">No work experience added yet.</p>
+  if (roles.length === 0) return <p className="inspector-empty">Todavía no hay experiencia laboral.</p>
   return (
     <div className="graph-section-list">
       {roles.map((role) => {
@@ -1123,12 +1123,12 @@ function WorkExperiencePanel({
         return (
           <section key={role.id} className="graph-section-group">
             <button type="button" className="graph-section-item is-role" onClick={() => onSelect(role.id)}>
-              <strong>{role.data.title.trim() || 'Untitled role'}</strong>
+              <strong>{role.data.title.trim() || 'Puesto sin título'}</strong>
               {role.data.company.trim() ? <span>{role.data.company.trim()}</span> : null}
             </button>
             {bullets.map((bullet) => (
               <button key={bullet.id} type="button" className="graph-section-item is-bullet" onClick={() => onSelect(bullet.id)}>
-                <span>{bullet.data.text.trim() || 'Empty experience'}</span>
+                <span>{bullet.data.text.trim() || 'Experiencia vacía'}</span>
               </button>
             ))}
           </section>
@@ -1212,7 +1212,7 @@ function ContextMenu({
     >
       {roleActions ? (
         <>
-          <div className="context-menu-label">Show in CV</div>
+          <div className="context-menu-label">Mostrar en el CV</div>
           {sections.map((section) => (
             <button
               key={section.id}
@@ -1223,10 +1223,10 @@ function ContextMenu({
               onClick={() => run(() => onToggleSection(section.id))}
             >
               <SectionViewIcon active={enabledSections.includes(section.id)} />
-              {section.name.trim() || 'Section'}
+              {section.name.trim() || 'Sección'}
             </button>
           ))}
-          <div className="context-menu-label">Side panels</div>
+          <div className="context-menu-label">Paneles laterales</div>
           {(['skills', 'experience'] as const).map((panel) => (
             <button
               key={panel}
@@ -1237,24 +1237,24 @@ function ContextMenu({
               onClick={() => run(() => onToggleGraphPanel(panel))}
             >
               <SectionViewIcon active={panelsOpen[panel]} />
-              {panel === 'skills' ? 'Skills' : 'Work Experience'}
+              {panel === 'skills' ? 'Skills' : 'Experiencia laboral'}
             </button>
           ))}
           <button type="button" role="menuitem" className="context-menu-item" onClick={() => run(() => onNewRole(menu.flow))}>
             <RolePlusIcon />
-            New work experience
+            Nueva experiencia laboral
           </button>
           <button type="button" role="menuitem" className="context-menu-item" onClick={() => run(() => onExistingRole(menu.flow))}>
             <RoleSelectIcon />
-            Existing work experience
+            Experiencia laboral existente
           </button>
           <button type="button" role="menuitem" className="context-menu-item" onClick={() => run(onArrange)}>
             <GraphViewIcon />
-            Arrange graph
+            Ordenar grafo
           </button>
           <button type="button" role="menuitem" className="context-menu-item" onClick={() => run(onCleanGraph)}>
             <TrashIcon />
-            Clean graph
+            Limpiar grafo
           </button>
         </>
       ) : null}
@@ -1262,19 +1262,19 @@ function ContextMenu({
         <div className="context-experience">
           <div className="context-menu-label">
             <PlusIcon />
-            Add skill
+            Agregar skill
           </div>
           <PresetList knownIds={knownIds} onPick={(preset) => run(() => place(preset))} />
         </div>
       ) : null}
       {target.kind === 'role' || target.kind === 'bullet' || target.kind === 'person' || target.kind === 'education' ? (
         <button type="button" role="menuitem" onClick={() => run(() => onDeleteNode(target.id))}>
-          Delete
+          Eliminar
         </button>
       ) : null}
       {target.kind === 'edge' ? (
         <button type="button" role="menuitem" onClick={() => run(() => onDeleteEdge(target.id))}>
-          Disconnect
+          Desconectar
         </button>
       ) : null}
     </div>
@@ -1309,16 +1309,16 @@ function PresetList({ knownIds, onPick }: { knownIds: Set<string>; onPick: (pres
   return (
     <div className="preset-choices">
       <label className="catalog-search">
-        <span className="sr-only">Search experiences</span>
+        <span className="sr-only">Buscar experiencias</span>
         <input
           value={query}
-          placeholder="Skill or metadata"
+          placeholder="Skill o metadatos"
           onChange={(event) => setQuery(event.target.value)}
           onKeyDown={(event) => event.stopPropagation()}
         />
       </label>
       {presets.length === 0 ? (
-        <p className="catalog-empty">No matches.</p>
+        <p className="catalog-empty">Sin resultados.</p>
       ) : (
         presets.map((preset) => (
           <button
@@ -1362,7 +1362,7 @@ function ExperienceCatalog({
 
   return (
     <aside className="catalog">
-      <div className="catalog-switch" role="tablist" aria-label="Work Experience / Skill">
+      <div className="catalog-switch" role="tablist" aria-label="Experiencia laboral / Skill">
         <button
           type="button"
           role="tab"
@@ -1370,7 +1370,7 @@ function ExperienceCatalog({
           className={tab === 'role' ? 'catalog-tab is-on' : 'catalog-tab'}
           onClick={() => onTab('role')}
         >
-          Work Experience
+          Experiencia laboral
         </button>
         <button
           type="button"
@@ -1384,12 +1384,12 @@ function ExperienceCatalog({
       </div>
       {tab === 'role' ? (
         roleGraphs.length === 0 ? (
-          <p className="catalog-empty">No work experiences.</p>
+          <p className="catalog-empty">No hay experiencias laborales.</p>
         ) : (
           <ul className="catalog-list">
             {roleGraphs.map((graph) => {
               const role = graph.nodes.find((node) => node.type === 'role')
-              const title = role?.type === 'role' ? role.data.title.trim() || 'Untitled role' : 'Untitled role'
+              const title = role?.type === 'role' ? role.data.title.trim() || 'Puesto sin título' : 'Puesto sin título'
               const company = role?.type === 'role' ? role.data.company.trim() : ''
               return (
                 <li key={graph.id}>
@@ -1410,16 +1410,16 @@ function ExperienceCatalog({
       {tab === 'experience' ? (
         <>
           <label className="catalog-search">
-            <span className="sr-only">Search experiences</span>
+            <span className="sr-only">Buscar experiencias</span>
             <input
               value={query}
-              placeholder="Skill or metadata"
+              placeholder="Skill o metadatos"
               onChange={(event) => setQuery(event.target.value)}
               onKeyDown={(event) => event.stopPropagation()}
             />
           </label>
           {presets.length === 0 ? (
-            <p className="catalog-empty">No matches.</p>
+            <p className="catalog-empty">Sin resultados.</p>
           ) : (
             <ul className="catalog-list">
               {presets.map((preset) => (
@@ -1471,8 +1471,8 @@ function PromptNodeView({ data }: NodeProps<PromptNode>) {
   return (
     <div className={arriving ? 'flow-node is-prompt is-arriving' : 'flow-node is-prompt'}>
       {arriving ? <Handle className="prompt-handle" type="target" position={Position.Left} id="in" /> : null}
-      <div className="node-kicker">{role ? 'Work Experience' : 'Skill'}</div>
-      <div className="node-title">{role ? 'Add work experience?' : 'Add new skill?'}</div>
+      <div className="node-kicker">{role ? 'Experiencia laboral' : 'Skill'}</div>
+      <div className="node-title">{role ? '¿Agregar experiencia laboral?' : '¿Agregar una skill nueva?'}</div>
     </div>
   )
 }
@@ -1493,14 +1493,14 @@ function PersonNodeView({ id, data, selected }: NodeProps<FlowNode<PersonNode>>)
       </div>
       {editing ? (
         <NodePorts>
-          <NodePort label="Name">
+          <NodePort label="Nombre">
             <input
               value={data.name}
               onChange={(event) => onUpdatePerson(id, { name: event.target.value })}
             />
           </NodePort>
           {data.fields.map((field) => (
-            <NodePort key={field.id} label={field.label || 'Field'}>
+            <NodePort key={field.id} label={field.label || 'Campo'}>
               <input
                 value={field.value}
                 onChange={(event) =>
@@ -1558,7 +1558,7 @@ function SkillsNodeView({ id, data, selected }: NodeProps<FlowNode<SkillsNode>>)
           ))}
         </div>
       ) : (
-        <div className="node-meta">Add skills</div>
+        <div className="node-meta">Agregá skills</div>
       )}
     </div>
   )
@@ -1567,8 +1567,8 @@ function SkillsNodeView({ id, data, selected }: NodeProps<FlowNode<SkillsNode>>)
 function ExperienceSectionNodeView({ selected }: NodeProps<FlowNode<ExperienceSectionNode>>) {
   return (
     <div className={`${nodeClass(selected)} is-skills`}>
-      <div className="node-kicker">Experience</div>
-      <div className="node-meta">Section</div>
+      <div className="node-kicker">Experiencia</div>
+      <div className="node-meta">Sección</div>
       <Handle type="source" position={Position.Right} id="out" />
     </div>
   )
@@ -1576,10 +1576,10 @@ function ExperienceSectionNodeView({ selected }: NodeProps<FlowNode<ExperienceSe
 
 function SectionNodeView({ data, selected }: NodeProps<FlowNode<SectionNode>>) {
   const sections = useContext(SectionsContext)
-  const name = sections.find((section) => section.id === data.sectionId)?.name.trim() || 'Section'
+  const name = sections.find((section) => section.id === data.sectionId)?.name.trim() || 'Sección'
   return (
     <div className={`${nodeClass(selected)} is-skills`}>
-      <div className="node-kicker">Section</div>
+      <div className="node-kicker">Sección</div>
       <div className="node-title">{name}</div>
     </div>
   )
@@ -1600,32 +1600,32 @@ function EducationNodeView({ id, data, selected }: NodeProps<FlowNode<EducationN
 
   return (
     <div className={`${nodeClass(selected, false, false, false, editing)} is-education`}>
-      <div className="node-kicker">Education</div>
+      <div className="node-kicker">Educación</div>
       {editing ? (
         <NodePorts>
           {data.entries.map((entry, index) => (
             <div key={entry.id} className="node-port-group">
               <div className="node-port-group-head">
-                <span>Entry {index + 1}</span>
+                <span>Entrada {index + 1}</span>
                 <button
                   type="button"
                   className="node-port-remove"
-                  aria-label="Remove entry"
+                  aria-label="Quitar entrada"
                   onClick={() => onUpdateEducation(id, { entries: data.entries.filter((item) => item.id !== entry.id) })}
                 >
                   ×
                 </button>
               </div>
-              <NodePort label="School">
+              <NodePort label="Institución">
                 <input value={entry.school} onChange={(event) => update(entry.id, { school: event.target.value })} />
               </NodePort>
-              <NodePort label="Degree">
+              <NodePort label="Título">
                 <input value={entry.degree} onChange={(event) => update(entry.id, { degree: event.target.value })} />
               </NodePort>
-              <NodePort label="Start">
+              <NodePort label="Inicio">
                 <input value={entry.start} onChange={(event) => update(entry.id, { start: event.target.value })} />
               </NodePort>
-              <NodePort label="End">
+              <NodePort label="Fin">
                 <input value={entry.end} onChange={(event) => update(entry.id, { end: event.target.value })} />
               </NodePort>
             </div>
@@ -1639,7 +1639,7 @@ function EducationNodeView({ id, data, selected }: NodeProps<FlowNode<EducationN
               })
             }
           >
-            Add entry
+            Agregar entrada
           </button>
         </NodePorts>
       ) : entries.length > 0 ? (
@@ -1685,9 +1685,9 @@ function RoleNodeView({ id, data, selected }: NodeProps<FlowNode<RoleNode>>) {
   if (data.pending) {
     return (
       <div className={`${nodeClass(selected, true, false, false, false, true)} is-role`}>
-        <div className="node-kicker">Work Experience</div>
+        <div className="node-kicker">Experiencia laboral</div>
         <label className="role-pick">
-          <span className="sr-only">Existing work experience</span>
+          <span className="sr-only">Experiencia laboral existente</span>
           <select
             className="nodrag nopan"
             defaultValue=""
@@ -1698,7 +1698,7 @@ function RoleNodeView({ id, data, selected }: NodeProps<FlowNode<RoleNode>>) {
             onPointerDown={(event) => event.stopPropagation()}
           >
             <option value="" disabled>
-              {options.length === 0 ? 'No roles in Personal' : 'Select work experience…'}
+              {options.length === 0 ? 'No hay puestos en Personal' : 'Elegí una experiencia laboral…'}
             </option>
             {grouped.map(([company, roles]) => (
               <optgroup key={company} label={company}>
@@ -1719,33 +1719,33 @@ function RoleNodeView({ id, data, selected }: NodeProps<FlowNode<RoleNode>>) {
   const dates = [data.start, data.end].filter(Boolean).join(' – ')
   return (
       <div className={`${nodeClass(selected, false, false, false, editing)} is-role`}>
-      <div className="node-kicker">Work Experience</div>
+      <div className="node-kicker">Experiencia laboral</div>
       {editing ? (
         <NodePorts>
-          <NodePort label="Title">
+          <NodePort label="Puesto">
             <input value={data.title} onChange={(event) => onUpdateRole(id, { title: event.target.value })} />
           </NodePort>
-          <NodePort label="Company">
+          <NodePort label="Empresa">
             <input
               value={data.company}
-              placeholder="Required"
+              placeholder="Obligatorio"
               onChange={(event) => onUpdateRole(id, { company: event.target.value })}
             />
           </NodePort>
-          <NodePort label="Location">
+          <NodePort label="Ubicación">
             <input value={data.location} onChange={(event) => onUpdateRole(id, { location: event.target.value })} />
           </NodePort>
-          <NodePort label="Start">
+          <NodePort label="Inicio">
             <input value={data.start} onChange={(event) => onUpdateRole(id, { start: event.target.value })} />
           </NodePort>
-          <NodePort label="End">
+          <NodePort label="Fin">
             <input value={data.end} onChange={(event) => onUpdateRole(id, { end: event.target.value })} />
           </NodePort>
         </NodePorts>
       ) : (
         <>
-          <div className="node-title">{data.title.trim() || 'Untitled'}</div>
-          <div className="node-meta">{data.company.trim() || 'Company'}</div>
+          <div className="node-title">{data.title.trim() || 'Sin título'}</div>
+          <div className="node-meta">{data.company.trim() || 'Empresa'}</div>
           {dates ? <div className="node-meta">{dates}</div> : null}
         </>
       )}
@@ -1764,25 +1764,25 @@ function BulletNodeView({ id, data, selected }: NodeProps<FlowNode<BulletNode>>)
     <div className={`${nodeClass(selected, !linked, false, data.hidden, editing, idle)} is-skills`}>
       <Handle type="target" position={Position.Left} id="in" />
       <div className="node-kicker-row">
-        <div className="node-kicker">{linked ? (idle ? 'Skill · Empty' : 'Skill') : 'Skill · Not linked'}</div>
+        <div className="node-kicker">{linked ? (idle ? 'Skill · Vacía' : 'Skill') : 'Skill · Sin conectar'}</div>
         <HideControl id={id} hidden={data.hidden} />
       </div>
       {editing ? (
         <NodePorts>
-          <NodePort label="Sentence" stack>
+          <NodePort label="Frase" stack>
             <textarea
               value={data.text}
               rows={4}
               onChange={(event) => onUpdateBullet(id, { text: event.target.value })}
             />
           </NodePort>
-          <NodePort label="Metadata" stack>
+          <NodePort label="Metadatos" stack>
             <SkillField bare skills={data.skills} onChange={(skills) => onUpdateBullet(id, { skills })} />
           </NodePort>
         </NodePorts>
       ) : (
         <>
-          <div className="node-sentence">{data.text.trim() || 'Empty skill'}</div>
+          <div className="node-sentence">{data.text.trim() || 'Skill vacía'}</div>
           {data.ability.trim() ? <div className="node-ability">{data.ability}</div> : null}
           {data.skills.length > 0 ? (
             <div className="node-skills">
@@ -1832,7 +1832,7 @@ function NodePorts({ children }: { children: ReactNode }) {
             endEdit()
           }}
         >
-          Build
+          Generar
         </button>
       </div>
     </div>
@@ -1858,10 +1858,10 @@ function NodePort({
 
 function inspectorTitle(node: ResumeNode, _sections: CatalogSection[]) {
   if (node.type === 'person') return 'Info Personal'
-  if (node.type === 'role') return 'Work Experience'
+  if (node.type === 'role') return 'Experiencia laboral'
   if (node.type === 'bullet') return 'Skill'
-  if (node.type === 'education') return 'Education'
-  return 'Details'
+  if (node.type === 'education') return 'Educación'
+  return 'Detalles'
 }
 
 function PersonInspector({
@@ -1873,11 +1873,11 @@ function PersonInspector({
 }) {
   return (
     <>
-      <Field label="Name" value={node.data.name} onChange={(name) => onUpdate(node.id, { name })} />
+      <Field label="Nombre" value={node.data.name} onChange={(name) => onUpdate(node.id, { name })} />
       {node.data.fields.map((field) => (
         <Field
           key={field.id}
-          label={field.label || 'Field'}
+          label={field.label || 'Campo'}
           value={field.value}
           onChange={(value) => onUpdate(node.id, { fields: replaceField(node.data.fields, field.id, { value }) })}
         />
@@ -1895,11 +1895,11 @@ function RoleInspector({
 }) {
   return (
     <>
-      <Field label="Title" value={node.data.title} onChange={(title) => onUpdate(node.id, { title })} />
-      <Field label="Company" value={node.data.company} onChange={(company) => onUpdate(node.id, { company })} placeholder="Required" />
+      <Field label="Puesto" value={node.data.title} onChange={(title) => onUpdate(node.id, { title })} />
+      <Field label="Empresa" value={node.data.company} onChange={(company) => onUpdate(node.id, { company })} placeholder="Obligatorio" />
       <div className="field-pair">
-        <Field label="Start" value={node.data.start} onChange={(start) => onUpdate(node.id, { start })} />
-        <Field label="End" value={node.data.end} onChange={(end) => onUpdate(node.id, { end })} />
+        <Field label="Inicio" value={node.data.start} onChange={(start) => onUpdate(node.id, { start })} />
+        <Field label="Fin" value={node.data.end} onChange={(end) => onUpdate(node.id, { end })} />
       </div>
     </>
   )
@@ -1923,25 +1923,25 @@ function EducationInspector({
       {node.data.entries.map((entry, index) => (
         <div key={entry.id} className="education-entry">
           <div className="inspector-head">
-            <span>Entry {index + 1}</span>
+            <span>Entrada {index + 1}</span>
             <IconButton
-              label="Remove"
+              label="Quitar"
               onClick={() => onUpdate(node.id, { entries: node.data.entries.filter((item) => item.id !== entry.id) })}
             >
               <TrashIcon />
             </IconButton>
           </div>
-          <Field label="School" value={entry.school} onChange={(school) => update(entry.id, { school })} />
-          <Field label="Degree" value={entry.degree} onChange={(degree) => update(entry.id, { degree })} />
+          <Field label="Institución" value={entry.school} onChange={(school) => update(entry.id, { school })} />
+          <Field label="Título" value={entry.degree} onChange={(degree) => update(entry.id, { degree })} />
           <div className="field-pair">
-            <Field label="Start" value={entry.start} onChange={(start) => update(entry.id, { start })} />
-            <Field label="End" value={entry.end} onChange={(end) => update(entry.id, { end })} />
+            <Field label="Inicio" value={entry.start} onChange={(start) => update(entry.id, { start })} />
+            <Field label="Fin" value={entry.end} onChange={(end) => update(entry.id, { end })} />
           </div>
         </div>
       ))}
       <div className="inspector-add">
         <IconButton
-          label="Add entry"
+          label="Agregar entrada"
           onClick={() => onUpdate(node.id, {
             entries: [...node.data.entries, { id: crypto.randomUUID(), school: '', degree: '', start: '', end: '' }],
           })}
@@ -1963,7 +1963,7 @@ function BulletInspector({
   return (
     <>
       <label className="field">
-        <span>Sentence</span>
+        <span>Frase</span>
         <textarea value={node.data.text} onChange={(event) => onUpdate(node.id, { text: event.target.value })} />
       </label>
       <SkillField skills={node.data.skills} onChange={(skills) => onUpdate(node.id, { skills })} />
@@ -2091,7 +2091,7 @@ function SkillField({
 
   return (
     <div className={bare ? 'field is-skills is-bare' : 'field is-skills'}>
-      {bare ? null : <span>Metadata</span>}
+      {bare ? null : <span>Metadatos</span>}
       {skills.length > 0 ? (
         <div className="chips">
           {skills.map((skill) => (
@@ -2099,7 +2099,7 @@ function SkillField({
               key={skill}
               type="button"
               className="chip"
-              aria-label={`Remove ${skill}`}
+              aria-label={`Quitar ${skill}`}
               onClick={() => onChange(skills.filter((item) => item !== skill))}
             >
               {skill}
@@ -2110,7 +2110,7 @@ function SkillField({
       ) : null}
       <input
         value={draft}
-        placeholder="Add skills separated by commas and press Enter"
+        placeholder="Agregá skills separadas por comas y apretá Enter"
         onChange={(event) => setDraft(event.target.value)}
         onKeyDown={onKeyDown}
       />
@@ -2132,8 +2132,8 @@ function HideControl({ id, hidden }: { id: string; hidden?: boolean }) {
       type="button"
       className="node-hide nodrag nopan"
       aria-pressed={hidden === true}
-      aria-label={hidden ? 'Show in build' : 'Hide from build'}
-      data-tip={hidden ? 'Show in build' : 'Hide from build'}
+      aria-label={hidden ? 'Mostrar al generar' : 'Ocultar al generar'}
+      data-tip={hidden ? 'Mostrar al generar' : 'Ocultar al generar'}
       onClick={(event) => {
         event.stopPropagation()
         toggle(id)
@@ -2193,17 +2193,17 @@ function RoleChoiceDialog({
     <div className="composer-backdrop" onMouseDown={onClose}>
       <div className="composer cv-draft role-choice" onMouseDown={(event) => event.stopPropagation()}>
         <div className="composer-head">
-          <h2>Add a role</h2>
-          <button type="button" className="view-close" aria-label="Close" onClick={onClose}>×</button>
+          <h2>Agregar un puesto</h2>
+          <button type="button" className="view-close" aria-label="Cerrar" onClick={onClose}>×</button>
         </div>
         <div className="role-choice-actions">
           <button type="button" onClick={onNew}>
-            <strong>New work experience</strong>
-            <span>Create one in a popup</span>
+            <strong>Nueva experiencia laboral</strong>
+            <span>Creala en una ventana emergente</span>
           </button>
           <button type="button" onClick={onExisting}>
-            <strong>Existing work experience</strong>
-            <span>Place a node and pick from Personal</span>
+            <strong>Experiencia laboral existente</strong>
+            <span>Ubicá un nodo y elegí desde Personal</span>
           </button>
         </div>
       </div>
@@ -2236,8 +2236,8 @@ function RoleDialog({
     <div className="composer-backdrop" onMouseDown={onClose}>
       <div className="composer cv-draft" onMouseDown={(event) => event.stopPropagation()}>
         <div className="composer-head">
-          <h2>New work experience</h2>
-          <button type="button" className="view-close" aria-label="Close" onClick={onClose}>×</button>
+          <h2>Nueva experiencia laboral</h2>
+          <button type="button" className="view-close" aria-label="Cerrar" onClick={onClose}>×</button>
         </div>
         <form
           className="role-draft-form"
@@ -2253,15 +2253,15 @@ function RoleDialog({
             })
           }}
         >
-          <Field label="Title" value={title} onChange={setTitle} placeholder="Software Engineer" />
-          <Field label="Company" value={company} onChange={setCompany} placeholder="Required" />
+          <Field label="Puesto" value={title} onChange={setTitle} placeholder="Software Engineer" />
+          <Field label="Empresa" value={company} onChange={setCompany} placeholder="Obligatorio" />
           <div className="field-pair">
-            <Field label="Start" value={start} onChange={setStart} placeholder="2022" />
-            <Field label="End" value={end} onChange={setEnd} placeholder="Present" />
+            <Field label="Inicio" value={start} onChange={setStart} placeholder="2022" />
+            <Field label="Fin" value={end} onChange={setEnd} placeholder="Actualidad" />
           </div>
           <div className="composer-actions">
-            <button type="button" className="button" onClick={onClose}>Cancel</button>
-            <button type="submit" className="button primary" disabled={!canSave}>Add</button>
+            <button type="button" className="button" onClick={onClose}>Cancelar</button>
+            <button type="submit" className="button primary" disabled={!canSave}>Agregar</button>
           </div>
         </form>
       </div>
@@ -2278,15 +2278,15 @@ function SkillDialog({ skills, onPick, onClose }: { skills: string[]; onPick: (s
     <div className="composer-backdrop" onMouseDown={onClose}>
       <div className="composer cv-draft skill-dialog" onMouseDown={(event) => event.stopPropagation()}>
         <div className="composer-head">
-          <h2>Add skill</h2>
-          <button type="button" className="view-close" aria-label="Close" onClick={onClose}>×</button>
+          <h2>Agregar skill</h2>
+          <button type="button" className="view-close" aria-label="Cerrar" onClick={onClose}>×</button>
         </div>
         <label className="field">
-          <span className="sr-only">Search skills</span>
+          <span className="sr-only">Buscar skills</span>
           <input value={query} placeholder="Skill" onChange={(event) => setQuery(event.target.value)} />
         </label>
         {matches.length === 0 ? (
-          <p className="catalog-empty">No matches.</p>
+          <p className="catalog-empty">Sin resultados.</p>
         ) : (
           <ul className="skill-choices">
             {matches.map((skill) => (

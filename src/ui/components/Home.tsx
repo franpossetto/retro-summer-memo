@@ -25,6 +25,14 @@ import {
 } from '../../domain/linkedinImport'
 import { templates, type TemplateId } from '../../domain/templates'
 
+/** Values to start the new-CV wizard with (e.g. from a job application), instead of the example. */
+export type ComposerSeed = {
+  title: string
+  position: string
+  company: string
+  posting: string
+}
+
 export type CvDraft = {
   title: string
   position: string
@@ -42,6 +50,7 @@ type HomeProps = {
   knowledge: KnowledgeAnswer[]
   section: 'projects' | 'personal'
   composerOpen: boolean
+  composerSeed?: ComposerSeed | null
   onComposerOpenChange: (open: boolean) => void
   onProfile: (patch: Partial<Profile>) => void
   onOpen: (id: string) => void
@@ -71,6 +80,7 @@ export function Home({
   knowledge,
   section,
   composerOpen,
+  composerSeed = null,
   onComposerOpenChange,
   onProfile,
   onOpen,
@@ -161,13 +171,13 @@ export function Home({
     const hasWork = imported.jobs.length > 0 || imported.education.length > 0
     const hasIdentity = imported.name.trim() !== '' || imported.location.trim() !== '' || imported.linkedInUrl !== ''
     if (!hasWork && !hasIdentity) {
-      setLinkedinError('Paste your LinkedIn profile text (Experience + Education), optionally with the profile link.')
+      setLinkedinError('Pegá el texto de tu perfil de LinkedIn (Experiencia + Educación) y, si querés, el link del perfil.')
       return
     }
     if (!hasWork) {
       onProfile(applyLinkedInImport(profile, imported))
       setLinkedinError(
-        'Saved the link/name. LinkedIn blocks reading the page from here — copy Experience + Education from your profile (or More → Save to PDF → paste the text) and import again.',
+        'Guardamos el link/nombre. LinkedIn no deja leer la página desde acá — copiá Experiencia + Educación de tu perfil (o Más → Guardar en PDF → pegá el texto) e importá de nuevo.',
       )
       return
     }
@@ -177,22 +187,23 @@ export function Home({
 
   useEffect(() => {
     if (!composerOpen) return
+    const start = composerSeed ?? { title: 'Software Engineer', position: 'Software Engineer', company: 'Platform', posting: EXAMPLE_POSTING }
     setStep('posting')
-    setTitle('Software Engineer')
-    setPosition('Software Engineer')
-    setCompany('Platform')
-    setPosting(EXAMPLE_POSTING)
+    setTitle(start.title)
+    setPosition(start.position)
+    setCompany(start.company)
+    setPosting(start.posting)
     setTemplateId('classic')
     setFontId('times')
     const suggested = matchExperiencesToPosting(
-      EXAMPLE_POSTING,
+      start.posting,
       masterItems.length > 0 ? masterItems : bank,
     )
       .filter((row) => row.score > 0)
       .slice(0, 8)
       .map((row) => row.item.id)
     setSelected(new Set(suggested))
-  }, [composerOpen, bank, masterItems])
+  }, [composerOpen, composerSeed, bank, masterItems])
 
   function create() {
     onCreate({
@@ -299,11 +310,11 @@ export function Home({
           <div className="home-head">
             <h1>Personal</h1>
             <button type="button" className="button" onClick={openLinkedInImport}>
-              Add from LinkedIn
+              Importar de LinkedIn
             </button>
           </div>
           <label className="field personal-name">
-            <span>Name</span>
+            <span>Nombre</span>
             <input value={profile.name} onChange={(event) => onProfile({ name: event.target.value })} />
           </label>
           <div className="personal-sheet">
@@ -311,8 +322,8 @@ export function Home({
               <thead>
                 <tr>
                   <th className="col-index" />
-                  <th>Label</th>
-                  <th>Value</th>
+                  <th>Etiqueta</th>
+                  <th>Valor</th>
                   <th className="col-remove" />
                 </tr>
               </thead>
@@ -323,15 +334,15 @@ export function Home({
                     <td>
                       <input
                         ref={field.id === draftId ? draftRef : undefined}
-                        aria-label={`Label ${index + 1}`}
+                        aria-label={`Etiqueta ${index + 1}`}
                         value={field.label}
-                        placeholder={field.kind === 'link' ? 'GitHub profile' : 'Label'}
+                        placeholder={field.kind === 'link' ? 'Perfil de GitHub' : 'Etiqueta'}
                         onChange={(event) => patchField(field.id, { label: event.target.value })}
                       />
                     </td>
                     <td>
                       <input
-                        aria-label={field.label || `Value ${index + 1}`}
+                        aria-label={field.label || `Valor ${index + 1}`}
                         type={fieldInputType(field.kind)}
                         value={field.value}
                         placeholder={field.kind === 'link' ? 'https://' : ''}
@@ -342,7 +353,7 @@ export function Home({
                       <button
                         type="button"
                         className="row-remove"
-                        aria-label={`Delete ${field.label || 'field'}`}
+                        aria-label={`Eliminar ${field.label || 'campo'}`}
                         onClick={() => onProfile({ fields: profile.fields.filter((item) => item.id !== field.id) })}
                       >
                         ×
@@ -354,19 +365,19 @@ export function Home({
             </table>
           </div>
           <button type="button" className="button personal-add" onClick={addField}>
-            New field
+            Nuevo campo
           </button>
 
-          <h2 className="personal-section-title">Education</h2>
+          <h2 className="personal-section-title">Educación</h2>
           <div className="personal-sheet">
             <table className="source-table personal-table personal-education-table">
               <thead>
                 <tr>
                   <th className="col-index" />
-                  <th>School</th>
-                  <th>Degree</th>
-                  <th>Start</th>
-                  <th>End</th>
+                  <th>Institución</th>
+                  <th>Título</th>
+                  <th>Inicio</th>
+                  <th>Fin</th>
                   <th className="col-remove" />
                 </tr>
               </thead>
@@ -375,7 +386,7 @@ export function Home({
                   <tr>
                     <td className="col-index" />
                     <td colSpan={5} className="personal-empty-cell">
-                      Schools and degrees for your resume.
+                      Instituciones y títulos para tu CV.
                     </td>
                   </tr>
                 ) : (
@@ -384,15 +395,15 @@ export function Home({
                       <td className="col-index">{index + 1}</td>
                       <td>
                         <input
-                          aria-label={`School ${index + 1}`}
+                          aria-label={`Institución ${index + 1}`}
                           value={entry.school}
-                          placeholder="University"
+                          placeholder="Universidad"
                           onChange={(event) => patchEducation(entry.id, { school: event.target.value })}
                         />
                       </td>
                       <td>
                         <input
-                          aria-label={`Degree ${index + 1}`}
+                          aria-label={`Título ${index + 1}`}
                           value={entry.degree}
                           placeholder="B.S. Computer Science"
                           onChange={(event) => patchEducation(entry.id, { degree: event.target.value })}
@@ -400,7 +411,7 @@ export function Home({
                       </td>
                       <td>
                         <input
-                          aria-label={`Education start ${index + 1}`}
+                          aria-label={`Inicio de educación ${index + 1}`}
                           value={entry.start}
                           placeholder="2016"
                           onChange={(event) => patchEducation(entry.id, { start: event.target.value })}
@@ -408,7 +419,7 @@ export function Home({
                       </td>
                       <td>
                         <input
-                          aria-label={`Education end ${index + 1}`}
+                          aria-label={`Fin de educación ${index + 1}`}
                           value={entry.end}
                           placeholder="2020"
                           onChange={(event) => patchEducation(entry.id, { end: event.target.value })}
@@ -418,7 +429,7 @@ export function Home({
                         <button
                           type="button"
                           className="row-remove"
-                          aria-label={`Delete education ${index + 1}`}
+                          aria-label={`Eliminar educación ${index + 1}`}
                           onClick={() => removeEducation(entry.id)}
                         >
                           ×
@@ -431,25 +442,25 @@ export function Home({
             </table>
           </div>
           <button type="button" className="button personal-add" onClick={addEducation}>
-            Add education
+            Agregar educación
           </button>
 
-          <h2 className="personal-section-title">Jobs</h2>
+          <h2 className="personal-section-title">Trabajos</h2>
           <p className="personal-section-lede">
-            Add a location and another role under a company when you get promoted.
+            Agregá la ubicación y, si te ascendieron, otro puesto dentro de la misma empresa.
           </p>
           {profile.jobs.length === 0 ? (
             <div className="personal-sheet personal-job">
-              <p className="personal-empty">No jobs yet.</p>
+              <p className="personal-empty">Todavía no hay trabajos.</p>
             </div>
           ) : (
             profile.jobs.map((job, jobIndex) => (
               <div key={job.id} className="personal-sheet personal-job">
                 <div className="personal-job-head">
                   <label className="field personal-job-company">
-                    <span>Company</span>
+                    <span>Empresa</span>
                     <input
-                      aria-label={`Company ${jobIndex + 1}`}
+                      aria-label={`Empresa ${jobIndex + 1}`}
                       value={job.company}
                       placeholder="Acme"
                       onChange={(event) => patchJob(job.id, { company: event.target.value })}
@@ -458,7 +469,7 @@ export function Home({
                   <button
                     type="button"
                     className="row-remove personal-job-remove"
-                    aria-label={`Delete company ${job.company || jobIndex + 1}`}
+                    aria-label={`Eliminar empresa ${job.company || jobIndex + 1}`}
                     onClick={() => removeJob(job.id)}
                   >
                     ×
@@ -468,10 +479,10 @@ export function Home({
                   <thead>
                     <tr>
                       <th className="col-index" />
-                      <th>Role</th>
-                      <th>Location</th>
-                      <th>Start</th>
-                      <th>End</th>
+                      <th>Puesto</th>
+                      <th>Ubicación</th>
+                      <th>Inicio</th>
+                      <th>Fin</th>
                       <th className="col-remove" />
                     </tr>
                   </thead>
@@ -481,7 +492,7 @@ export function Home({
                         <td className="col-index">{roleIndex + 1}</td>
                         <td>
                           <input
-                            aria-label={`${job.company || 'Company'} role ${roleIndex + 1}`}
+                            aria-label={`Puesto ${roleIndex + 1} de ${job.company || 'la empresa'}`}
                             value={role.title}
                             placeholder={roleIndex === 0 ? 'Software Engineer' : 'Senior Software Engineer'}
                             onChange={(event) => patchJobRole(job.id, role.id, { title: event.target.value })}
@@ -489,15 +500,15 @@ export function Home({
                         </td>
                         <td>
                           <input
-                            aria-label={`${job.company || 'Company'} role ${roleIndex + 1} location`}
+                            aria-label={`Ubicación del puesto ${roleIndex + 1} de ${job.company || 'la empresa'}`}
                             value={role.location}
-                            placeholder="City, Country"
+                            placeholder="Ciudad, País"
                             onChange={(event) => patchJobRole(job.id, role.id, { location: event.target.value })}
                           />
                         </td>
                         <td>
                           <input
-                            aria-label={`Role start ${roleIndex + 1}`}
+                            aria-label={`Inicio del puesto ${roleIndex + 1}`}
                             value={role.start}
                             placeholder="2021"
                             onChange={(event) => patchJobRole(job.id, role.id, { start: event.target.value })}
@@ -505,9 +516,9 @@ export function Home({
                         </td>
                         <td>
                           <input
-                            aria-label={`Role end ${roleIndex + 1}`}
+                            aria-label={`Fin del puesto ${roleIndex + 1}`}
                             value={role.end}
-                            placeholder={roleIndex === job.roles.length - 1 ? 'Present' : '2023'}
+                            placeholder={roleIndex === job.roles.length - 1 ? 'Actualidad' : '2023'}
                             onChange={(event) => patchJobRole(job.id, role.id, { end: event.target.value })}
                           />
                         </td>
@@ -515,7 +526,7 @@ export function Home({
                           <button
                             type="button"
                             className="row-remove"
-                            aria-label={`Delete role ${role.title || roleIndex + 1}`}
+                            aria-label={`Eliminar puesto ${role.title || roleIndex + 1}`}
                             onClick={() => removeJobRole(job.id, role.id)}
                           >
                             ×
@@ -526,27 +537,27 @@ export function Home({
                   </tbody>
                 </table>
                 <button type="button" className="button personal-add-role" onClick={() => addJobRole(job.id)}>
-                  Add role
+                  Agregar puesto
                 </button>
               </div>
             ))
           )}
           <button type="button" className="button personal-add" onClick={addJob}>
-            Add company
+            Agregar empresa
           </button>
         </>
       ) : (
       <>
       <div className="home-head">
-        <h1>Projects</h1>
-        <div className="segment projects-view-toggle" role="group" aria-label="Projects view">
+        <h1>Proyectos</h1>
+        <div className="segment projects-view-toggle" role="group" aria-label="Vista de proyectos">
           <button
             type="button"
             className={projectsView === 'cards' ? 'is-current' : undefined}
             aria-pressed={projectsView === 'cards'}
             onClick={() => setProjectsView('cards')}
           >
-            Cards
+            Tarjetas
           </button>
           <button
             type="button"
@@ -554,15 +565,15 @@ export function Home({
             aria-pressed={projectsView === 'list'}
             onClick={() => setProjectsView('list')}
           >
-            List
+            Lista
           </button>
         </div>
         <button type="button" className="button primary" onClick={() => onComposerOpenChange(true)}>
-          New from posting
+          Nuevo desde aviso
         </button>
       </div>
       {cvs.length === 0 ? (
-        <p className="home-empty">Your projects will show up here.</p>
+        <p className="home-empty">Tus proyectos van a aparecer acá.</p>
       ) : projectsView === 'cards' ? (
         <ul className="project-grid">
           {cvs.map((cv) => {
@@ -628,22 +639,22 @@ export function Home({
             onClick={(event) => event.stopPropagation()}
           >
             <div className="composer-head">
-              <h2 id="linkedin-import-title">Add from LinkedIn</h2>
-              <button type="button" className="view-close" aria-label="Close" onClick={() => setLinkedinOpen(false)}>
+              <h2 id="linkedin-import-title">Importar de LinkedIn</h2>
+              <button type="button" className="view-close" aria-label="Cerrar" onClick={() => setLinkedinOpen(false)}>
                 ×
               </button>
             </div>
             <p className="personal-section-lede linkedin-import-lede">
-              LinkedIn blocks reading a profile from a link alone. Fastest path: open your profile → copy Experience and Education
-              (or More → Save to PDF → select all → copy) and paste below. You can include the profile URL too.
+              LinkedIn no deja leer un perfil solo con el link. Lo más rápido: abrí tu perfil → copiá Experiencia y Educación
+              (o Más → Guardar en PDF → seleccioná todo → copiá) y pegalo abajo. También podés incluir la URL del perfil.
             </p>
             <label className="field">
-              <span>Paste</span>
+              <span>Pegar</span>
               <textarea
                 ref={linkedinRef}
                 className="linkedin-import-paste"
                 value={linkedinPaste}
-                placeholder={'https://www.linkedin.com/in/you\n\nExperience\nAcme\nFull-time · 4 yrs\nSenior Engineer\nJan 2023 - Present\nEngineer\nJan 2021 - Jan 2023\n\nEducation\nState University\nB.S. Computer Science\n2016 - 2020'}
+                placeholder={'https://www.linkedin.com/in/tu-perfil\n\nExperiencia\nAcme\nJornada completa · 4 años\nSenior Engineer\nEne 2023 - Actualidad\nEngineer\nEne 2021 - Ene 2023\n\nEducación\nUniversidad Nacional\nB.S. Computer Science\n2016 - 2020'}
                 onChange={(event) => {
                   setLinkedinPaste(event.target.value)
                   setLinkedinError('')
@@ -652,16 +663,16 @@ export function Home({
             </label>
             {linkedinPreview && linkedInImportSummary(linkedinPreview) ? (
               <p className="linkedin-import-preview" role="status">
-                Will import: {linkedInImportSummary(linkedinPreview)}
+                Se va a importar: {linkedInImportSummary(linkedinPreview)}
               </p>
             ) : null}
             {linkedinError ? <p className="linkedin-import-error" role="alert">{linkedinError}</p> : null}
             <div className="composer-actions">
               <button type="button" className="button" onClick={() => setLinkedinOpen(false)}>
-                Cancel
+                Cancelar
               </button>
               <button type="button" className="button primary" onClick={importFromLinkedIn}>
-                Import
+                Importar
               </button>
             </div>
           </div>
@@ -677,55 +688,57 @@ export function Home({
             onClick={(event) => event.stopPropagation()}
           >
             <div className="composer-head">
-              <h2 id="new-project-title">New CV</h2>
-              <button type="button" className="view-close" aria-label="Close" onClick={() => onComposerOpenChange(false)}>
+              <h2 id="new-project-title">Nuevo CV</h2>
+              <button type="button" className="view-close" aria-label="Cerrar" onClick={() => onComposerOpenChange(false)}>
                 ×
               </button>
             </div>
 
-            <ol className="wizard-steps" aria-label="Steps">
-              <li className={step === 'posting' ? 'is-current' : undefined}>Posting</li>
-              <li className={step === 'pick' ? 'is-current' : undefined}>Experiences</li>
-              <li className={step === 'style' ? 'is-current' : undefined}>Style</li>
+            <ol className="wizard-steps" aria-label="Pasos">
+              <li className={step === 'posting' ? 'is-current' : undefined}>Aviso</li>
+              <li className={step === 'pick' ? 'is-current' : undefined}>Experiencias</li>
+              <li className={step === 'style' ? 'is-current' : undefined}>Estilo</li>
             </ol>
 
             {step === 'posting' ? (
               <>
                 <div className="wizard-meta-row">
                   <label className="field">
-                    <span>Title</span>
+                    <span>Título</span>
                     <input value={title} placeholder="Software Engineer" onChange={(event) => setTitle(event.target.value)} />
                   </label>
                   <label className="field">
-                    <span>Position</span>
+                    <span>Cargo</span>
                     <input value={position} placeholder="Software Engineer" onChange={(event) => setPosition(event.target.value)} />
                   </label>
                   <label className="field">
-                    <span>Company</span>
+                    <span>Empresa</span>
                     <input value={company} placeholder="Acme" onChange={(event) => setCompany(event.target.value)} />
                   </label>
                 </div>
                 <div className="wizard-posting-head">
-                  <span className="menu-label">Job posting</span>
-                  <button type="button" className="button" onClick={useExample}>
-                    Use example
-                  </button>
+                  <span className="menu-label">Aviso</span>
+                  {composerSeed ? null : (
+                    <button type="button" className="button" onClick={useExample}>
+                      Usar ejemplo
+                    </button>
+                  )}
                 </div>
                 <label className="field">
-                  <span className="sr-only">Job posting</span>
+                  <span className="sr-only">Aviso</span>
                   <textarea
                     className="wizard-posting"
                     value={posting}
-                    placeholder="Paste one or more job postings…"
+                    placeholder="Pegá uno o más avisos…"
                     onChange={(event) => setPosting(event.target.value)}
                   />
                 </label>
                 <div className="composer-actions">
                   <button type="button" className="button" onClick={() => onComposerOpenChange(false)}>
-                    Cancel
+                    Cancelar
                   </button>
                   <button type="button" className="button primary" onClick={() => setStep('pick')}>
-                    Next
+                    Siguiente
                   </button>
                 </div>
               </>
@@ -734,8 +747,8 @@ export function Home({
             {step === 'pick' ? (
               <>
                 <p className="knowledge-lede">
-                  Mark experiences from your master to seed this CV.
-                  {masterItems.length === 0 ? ' No test answers yet — showing the full bank.' : null}
+                  Marcá experiencias de tu master para precargar este CV.
+                  {masterItems.length === 0 ? ' Todavía no respondiste preguntas — se muestran todas las experiencias.' : null}
                 </p>
                 <ul className="wizard-pick-list">
                   {ranked.map(({ item, score }) => (
@@ -751,7 +764,7 @@ export function Home({
                           <span className="wizard-pick-meta">
                             {item.category}
                             {item.skills.length > 0 ? ` · ${item.skills.join(', ')}` : ''}
-                            {score > 0 ? ` · match ${score}` : ''}
+                            {score > 0 ? ` · coincidencia ${score}` : ''}
                             {levelLabel(levelById.get(item.id))}
                           </span>
                         </span>
@@ -761,10 +774,10 @@ export function Home({
                 </ul>
                 <div className="composer-actions">
                   <button type="button" className="button" onClick={() => setStep('posting')}>
-                    Back
+                    Atrás
                   </button>
                   <button type="button" className="button primary" onClick={() => setStep('style')}>
-                    Next
+                    Siguiente
                   </button>
                 </div>
               </>
@@ -772,7 +785,7 @@ export function Home({
 
             {step === 'style' ? (
               <>
-                <p className="menu-label">Template</p>
+                <p className="menu-label">Plantilla</p>
                 <div className="template-choices">
                   {templates.map((template) => (
                     <button
@@ -791,7 +804,7 @@ export function Home({
                     </button>
                   ))}
                 </div>
-                <p className="menu-label">Font</p>
+                <p className="menu-label">Fuente</p>
                 <div className="font-choices">
                   {fonts.map((font) => (
                     <button
@@ -807,14 +820,14 @@ export function Home({
                   ))}
                 </div>
                 <p className="wizard-seed-note">
-                  Creates a blank CV with {selected.size} experience{selected.size === 1 ? '' : 's'} already on the graph.
+                  Crea un CV en blanco con {selected.size} experiencia{selected.size === 1 ? '' : 's'} ya en el grafo.
                 </p>
                 <div className="composer-actions">
                   <button type="button" className="button" onClick={() => setStep('pick')}>
-                    Back
+                    Atrás
                   </button>
                   <button type="button" className="button primary" onClick={create}>
-                    Create
+                    Crear
                   </button>
                 </div>
               </>
@@ -868,7 +881,7 @@ function TemplateMark({ id }: { id: TemplateId }) {
 function projectRow(cv: Cv) {
   const latest = cv.versions.at(-1)
   return {
-    name: cv.title.trim() || 'Untitled',
+    name: cv.title.trim() || 'Sin título',
     target: postingLabel(cv),
     match: mockMatchScore(cv),
     when: latest ? formatWhen(latest.createdAt) : '—',
@@ -881,7 +894,7 @@ function postingLabel(cv: Cv) {
   if (position && company) return `${position} en ${company}`
   if (position) return position
   if (company) return company
-  if (cv.posting.trim()) return 'Posting attached'
+  if (cv.posting.trim()) return 'Aviso adjunto'
   return '—'
 }
 
@@ -924,7 +937,7 @@ function ProjectMenu({
       <button
         type="button"
         className="project-more"
-        aria-label={`Actions for ${name}`}
+        aria-label={`Acciones para ${name}`}
         aria-expanded={open}
         onClick={onToggle}
       >
@@ -933,10 +946,10 @@ function ProjectMenu({
       {open ? (
         <div className="project-menu" role="menu">
           <button type="button" role="menuitem" onClick={onView}>
-            View
+            Ver
           </button>
           <button type="button" role="menuitem" onClick={onDelete}>
-            Delete
+            Eliminar
           </button>
         </div>
       ) : null}
@@ -948,5 +961,5 @@ function formatWhen(iso: string) {
   if (!iso) return ''
   const date = new Date(iso)
   if (Number.isNaN(date.getTime())) return ''
-  return date.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+  return date.toLocaleString('es-AR', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
 }

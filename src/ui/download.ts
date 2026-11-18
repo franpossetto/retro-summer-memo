@@ -28,9 +28,9 @@ export function downloadDoc(title: string, snapshot: Snapshot, enabledSections: 
 }
 
 function fileBase(title: string) {
-  const name = title.trim() || 'Resume'
+  const name = title.trim() || 'CV'
   const safe = name.replace(/[\\/:*?"<>|]+/g, '').trim()
-  return (safe || 'Resume').slice(0, 80)
+  return (safe || 'CV').slice(0, 80)
 }
 
 function resumeDocHtml(title: string, snapshot: Snapshot, enabledSections: string[], sections: CatalogSection[]) {

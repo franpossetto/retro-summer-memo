@@ -24,9 +24,9 @@ type RevealDraft = {
 }
 
 const statusOptions: { id: LevelFilter; label: string }[] = [
-  { id: 'in-master', label: 'In master' },
-  { id: 'unanswered', label: 'Unanswered' },
-  { id: 'no-experience', label: 'No experience' },
+  { id: 'in-master', label: 'En el master' },
+  { id: 'unanswered', label: 'Sin responder' },
+  { id: 'no-experience', label: 'Sin experiencia' },
 ]
 
 export function ExperienceMaster({ bank, answers, onAnswer, onApplyAnswers, onBank }: ExperienceMasterProps) {
@@ -111,19 +111,19 @@ export function ExperienceMaster({ bank, answers, onAnswer, onApplyAnswers, onBa
     <div className="home">
       <div className="home-head knowledge-head">
         <div>
-          <h1>Experience</h1>
+          <h1>Experiencia</h1>
           <p className="knowledge-lede">
-            Your master inventory for CVs. Mark levels here, or answer questions to fill it faster.
+            Tu inventario master para los CVs. Marcá niveles acá o respondé preguntas para completarlo más rápido.
           </p>
         </div>
         <button type="button" className="button primary" onClick={() => setTest(true)}>
-          Answer questions
+          Responder preguntas
         </button>
       </div>
 
-      <div className="master-stats" aria-label="Master summary">
-        <span><strong>{known.length}</strong> in master</span>
-        <span><strong>{unanswered}</strong> unanswered</span>
+      <div className="master-stats" aria-label="Resumen del master">
+        <span><strong>{known.length}</strong> en el master</span>
+        <span><strong>{unanswered}</strong> sin responder</span>
       </div>
 
       <form
@@ -134,33 +134,33 @@ export function ExperienceMaster({ bank, answers, onAnswer, onApplyAnswers, onBa
         }}
       >
         <label className="field">
-          <span className="sr-only">Category</span>
+          <span className="sr-only">Categoría</span>
           <input
             value={draftCategory}
-            placeholder="Category"
+            placeholder="Categoría"
             onChange={(event) => setDraftCategory(event.target.value)}
           />
         </label>
         <label className="field master-add-text">
-          <span className="sr-only">Add custom experience</span>
+          <span className="sr-only">Agregar experiencia personalizada</span>
           <input
             value={draftText}
-            placeholder="Add custom experience"
+            placeholder="Agregar experiencia personalizada"
             onChange={(event) => setDraftText(event.target.value)}
           />
         </label>
         <button type="submit" className="button" disabled={!draftText.trim()}>
-          Add
+          Agregar
         </button>
       </form>
 
       <div className="notion-filters" ref={filterRef}>
         <label className="notion-search">
-          <span className="sr-only">Search</span>
+          <span className="sr-only">Buscar</span>
           <SearchIcon />
           <input
             value={query}
-            placeholder="Search"
+            placeholder="Buscar"
             onChange={(event) => setQuery(event.target.value)}
           />
         </label>
@@ -168,14 +168,14 @@ export function ExperienceMaster({ bank, answers, onAnswer, onApplyAnswers, onBa
         {category ? (
           <div className="notion-pill-wrap">
             <button type="button" className="notion-pill" onClick={() => setFilterMenu(filterMenu === 'category' ? null : 'category')}>
-              <span className="notion-pill-key">Category</span>
-              <span className="notion-pill-op">is</span>
+              <span className="notion-pill-key">Categoría</span>
+              <span className="notion-pill-op">es</span>
               <span className="notion-pill-value">{category}</span>
               <span
                 className="notion-pill-x"
                 role="button"
                 tabIndex={0}
-                aria-label="Clear category filter"
+                aria-label="Quitar filtro de categoría"
                 onClick={(event) => {
                   event.stopPropagation()
                   setCategory(null)
@@ -216,14 +216,14 @@ export function ExperienceMaster({ bank, answers, onAnswer, onApplyAnswers, onBa
         {status ? (
           <div className="notion-pill-wrap">
             <button type="button" className="notion-pill" onClick={() => setFilterMenu(filterMenu === 'status' ? null : 'status')}>
-              <span className="notion-pill-key">Status</span>
-              <span className="notion-pill-op">is</span>
+              <span className="notion-pill-key">Estado</span>
+              <span className="notion-pill-op">es</span>
               <span className="notion-pill-value">{statusOptions.find((item) => item.id === status)?.label}</span>
               <span
                 className="notion-pill-x"
                 role="button"
                 tabIndex={0}
-                aria-label="Clear status filter"
+                aria-label="Quitar filtro de estado"
                 onClick={(event) => {
                   event.stopPropagation()
                   setStatus(null)
@@ -269,18 +269,18 @@ export function ExperienceMaster({ bank, answers, onAnswer, onApplyAnswers, onBa
               aria-expanded={filterMenu === 'add' || (!category && filterMenu === 'category') || (!status && filterMenu === 'status')}
               onClick={() => setFilterMenu(filterMenu === 'add' ? null : 'add')}
             >
-              + Filter
+              + Filtro
             </button>
             {filterMenu === 'add' ? (
               <div className="notion-menu" role="menu">
                 {canAddCategory ? (
                   <button type="button" role="menuitem" onClick={() => setFilterMenu('category')}>
-                    Category
+                    Categoría
                   </button>
                 ) : null}
                 {canAddStatus ? (
                   <button type="button" role="menuitem" onClick={() => setFilterMenu('status')}>
-                    Status
+                    Estado
                   </button>
                 ) : null}
               </div>
@@ -333,7 +333,7 @@ export function ExperienceMaster({ bank, answers, onAnswer, onApplyAnswers, onBa
               setFilterMenu(null)
             }}
           >
-            Clear
+            Limpiar
           </button>
         ) : null}
       </div>
@@ -343,16 +343,16 @@ export function ExperienceMaster({ bank, answers, onAnswer, onApplyAnswers, onBa
           <thead>
             <tr>
               <th className="col-index" />
-              <th>Experience</th>
+              <th>Experiencia</th>
               <th className="col-skills">Skills</th>
-              <th className="col-mark">Level</th>
+              <th className="col-mark">Nivel</th>
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 ? (
               <tr>
                 <td className="col-index" />
-                <td colSpan={3}>No matches.</td>
+                <td colSpan={3}>Sin resultados.</td>
               </tr>
             ) : rows.map((item, index) => {
               const level = byId.get(item.id)
@@ -404,7 +404,7 @@ function LevelMark({
   return (
     <select
       className={value === null ? 'level-select' : `level-select is-level-${value}`}
-      aria-label="Experience level"
+      aria-label="Nivel de experiencia"
       value={selected}
       onChange={(event) => {
         const next = event.target.value
@@ -466,9 +466,9 @@ function ExperienceTest({
     if (updates.length > 0) onApplyAnswers(updates)
     const toMaster = updates.filter((item) => item.level > 0).length
     const asNone = updates.filter((item) => item.level === 0).length
-    if (toMaster > 0 && asNone > 0) setFlash(`Saved ${toMaster} to master, ${asNone} as no experience.`)
-    else if (toMaster > 0) setFlash(`Added ${toMaster} to your master.`)
-    else if (asNone > 0) setFlash(`Marked ${asNone} as no experience.`)
+    if (toMaster > 0 && asNone > 0) setFlash(`Guardadas: ${toMaster} en el master y ${asNone} como sin experiencia.`)
+    else if (toMaster > 0) setFlash(`Agregadas a tu master: ${toMaster}.`)
+    else if (asNone > 0) setFlash(`Marcadas como sin experiencia: ${asNone}.`)
     else setFlash(null)
     setReveal(null)
     setIndex((current) => current + 1)
@@ -479,13 +479,13 @@ function ExperienceTest({
       <div className="home">
         <div className="test-shell">
           <div className="test-card test-done">
-            <p className="test-kicker">Questions</p>
-            <h2>That’s enough for now</h2>
+            <p className="test-kicker">Preguntas</p>
+            <h2>Por ahora alcanza</h2>
             <p className="knowledge-lede">
-              Your master reflects what you confirmed. You can answer more questions anytime, or mark rows by hand.
+              Tu master refleja lo que confirmaste. Podés responder más preguntas cuando quieras o marcar filas a mano.
             </p>
             <button type="button" className="button primary" onClick={onClose}>
-              Back to experience
+              Volver a Experiencia
             </button>
           </div>
         </div>
@@ -502,14 +502,14 @@ function ExperienceTest({
       <div className="home">
         <div className="test-shell">
           <div className="test-card test-reveal is-in">
-            <p className="test-kicker">Suggested from your answer</p>
+            <p className="test-kicker">Sugerido según tu respuesta</p>
             <h2>
               {reveal.level === 0
-                ? 'Mark these as no experience?'
-                : `Add to master as ${experienceLevels.find((item) => item.level === reveal.level)?.label}?`}
+                ? '¿Marcarlas como sin experiencia?'
+                : `¿Agregarlas al master como ${experienceLevels.find((item) => item.level === reveal.level)?.label}?`}
             </h2>
             <p className="knowledge-lede">
-              One answer can cover several experiences. Uncheck anything that does not fit, or change the level.
+              Una respuesta puede cubrir varias experiencias. Destildá lo que no corresponda o cambiá el nivel.
             </p>
             <ul className="test-suggest-list">
               {experiences.map((item) => (
@@ -532,7 +532,7 @@ function ExperienceTest({
                       <span className="test-suggest-meta">
                         {item.experience.category}
                         {item.experience.skills.length > 0 ? ` · ${item.experience.skills.join(', ')}` : ''}
-                        {byId.has(item.id) ? ` · was ${labelFor(byId.get(item.id)!)}` : ' · unanswered'}
+                        {byId.has(item.id) ? ` · antes: ${labelFor(byId.get(item.id)!)}` : ' · sin responder'}
                       </span>
                     </span>
                   </label>
@@ -565,7 +565,7 @@ function ExperienceTest({
             </ul>
             <div className="test-actions">
               <button type="button" className="button" onClick={() => setReveal(null)}>
-                Back
+                Atrás
               </button>
               <button
                 type="button"
@@ -573,7 +573,7 @@ function ExperienceTest({
                 disabled={!reveal.items.some((item) => item.included)}
                 onClick={confirmReveal}
               >
-                Confirm
+                Confirmar
               </button>
             </div>
           </div>
@@ -590,7 +590,7 @@ function ExperienceTest({
             <span style={{ width: `${((index + 1) / Math.max(queue.length, 1)) * 100}%` }} />
           </div>
           <p className="test-kicker">
-            Question {index + 1} of {queue.length}
+            Pregunta {index + 1} de {queue.length}
           </p>
           {flash ? (
             <p className="test-flash" role="status">{flash}</p>
@@ -598,9 +598,9 @@ function ExperienceTest({
           <h2>{question.prompt}</h2>
           <p className="knowledge-lede">{question.detail}</p>
           <p className="test-coverage">
-            May update {question.experienceIds.filter((id) => bankById.has(id)).length} experiences — you review before saving.
+            Puede actualizar {question.experienceIds.filter((id) => bankById.has(id)).length} experiencias — las revisás antes de guardar.
           </p>
-          <div className="test-choices" role="group" aria-label="Your answer">
+          <div className="test-choices" role="group" aria-label="Tu respuesta">
             {experienceLevels.map((choice) => (
               <button
                 key={choice.level}
@@ -614,7 +614,7 @@ function ExperienceTest({
           </div>
           <div className="test-actions">
             <button type="button" className="button" onClick={onClose}>
-              Exit
+              Salir
             </button>
             <button
               type="button"
@@ -624,7 +624,7 @@ function ExperienceTest({
                 setIndex((current) => current + 1)
               }}
             >
-              Skip question
+              Saltear pregunta
             </button>
           </div>
         </div>

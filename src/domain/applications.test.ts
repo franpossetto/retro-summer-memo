@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   addApplicationNote,
+  addStatus,
   companyKey,
   createApplication,
   defaultApplicationStatuses,
@@ -8,6 +9,7 @@ import {
   moveApplication,
   postingKey,
   readApplications,
+  removeApplicationNote,
   removeStatus,
   titleSimilarity,
   type Application,
@@ -135,6 +137,22 @@ describe('application lifecycle', () => {
     expect(result.statuses.some((status) => status.id === 'hr-call')).toBe(false)
     expect(result.applications[0].statusId).toBe('sent')
     expect(removeStatus(statuses, [application], 'hr-call', 'missing')).toEqual({ statuses, applications: [application] })
+  })
+
+  it('adds open steps after the last open one and closing steps at the end', () => {
+    const open = addStatus(statuses, '  Call con el CTO ')
+    expect(open.statuses.map((status) => status.id).indexOf(open.status.id)).toBe(5)
+    expect(open.status).toMatchObject({ name: 'Call con el CTO', kind: 'active' })
+    expect(statuses.some((status) => status.color === open.status.color)).toBe(false)
+    const closing = addStatus(statuses, 'Ghosteado', 'withdrawn')
+    expect(closing.statuses.at(-1)).toBe(closing.status)
+  })
+
+  it('deletes notes but never status changes', () => {
+    const noted = addApplicationNote(apply('Acme', 'Backend Engineer'), 'Hablé con Ana')
+    const [moved, note] = noted.events
+    expect(removeApplicationNote(noted, note.id).events).toEqual([moved])
+    expect(removeApplicationNote(noted, moved.id)).toBe(noted)
   })
 
   it('reads stored applications defensively', () => {

@@ -1,7 +1,8 @@
 import type { SaveStatus } from '../useDocumentSync'
 
 type SidebarProps = {
-  section: 'projects' | 'personal' | 'experience' | 'library' | 'workspace'
+  section: 'applications' | 'projects' | 'personal' | 'experience' | 'library' | 'workspace'
+  onApplications: () => void
   onProjects: () => void
   onPersonal: () => void
   onExperience: () => void
@@ -11,14 +12,24 @@ type SidebarProps = {
   account?: { email: string; onSignOut: () => void }
 }
 
-export function Sidebar({ section, onProjects, onPersonal, onExperience, onLibrary, save, onRetrySave, account }: SidebarProps) {
+export function Sidebar({ section, onApplications, onProjects, onPersonal, onExperience, onLibrary, save, onRetrySave, account }: SidebarProps) {
   return (
-    <nav className="sidebar" aria-label="Sections">
+    <nav className="sidebar" aria-label="Secciones">
       <button
         type="button"
         className="sidebar-item"
-        aria-label="Projects"
-        title="Projects"
+        aria-label="Postulaciones"
+        title="Postulaciones"
+        aria-current={section === 'applications' ? 'page' : undefined}
+        onClick={onApplications}
+      >
+        <ApplicationsIcon />
+      </button>
+      <button
+        type="button"
+        className="sidebar-item"
+        aria-label="Proyectos"
+        title="Proyectos"
         aria-current={section === 'projects' ? 'page' : undefined}
         onClick={onProjects}
       >
@@ -37,8 +48,8 @@ export function Sidebar({ section, onProjects, onPersonal, onExperience, onLibra
       <button
         type="button"
         className="sidebar-item"
-        aria-label="Experience"
-        title="Experience"
+        aria-label="Experiencia"
+        title="Experiencia"
         aria-current={section === 'experience' ? 'page' : undefined}
         onClick={onExperience}
       >
@@ -47,8 +58,8 @@ export function Sidebar({ section, onProjects, onPersonal, onExperience, onLibra
       <button
         type="button"
         className="sidebar-item"
-        aria-label="Library"
-        title="Library"
+        aria-label="Biblioteca"
+        title="Biblioteca"
         aria-current={section === 'library' ? 'page' : undefined}
         onClick={onLibrary}
       >
@@ -91,6 +102,15 @@ function SaveIndicator({ save, onRetry }: { save: SaveStatus; onRetry: () => voi
     <span className={`save-indicator is-${save.state}`} role="status" title={label} aria-label={label}>
       <span className="save-dot" aria-hidden="true" />
     </span>
+  )
+}
+
+function ApplicationsIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
+      <rect x="1.75" y="5" width="14.5" height="10.5" rx="1.5" fill="none" stroke="currentColor" strokeWidth="1.5" />
+      <path d="M6.5 5V3.5a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1V5M1.75 9.5h14.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+    </svg>
   )
 }
 
