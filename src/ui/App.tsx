@@ -50,6 +50,9 @@ import {
 } from '../domain/model'
 import type { DocumentStore } from '../ports/documentStore'
 import { useDocumentSync } from './useDocumentSync'
+import type { OAuthConsent } from '../ports/auth'
+import { ConnectAssistant, Onboarding } from './components/assistant/ConnectAssistant'
+import { useConnectedApps } from './components/assistant/useConnectedApps'
 import {
   fonts,
   fontSizes,
@@ -120,11 +123,29 @@ type AppProps = {
   account?: { email: string; onSignOut: () => void }
   /** One-off message shown on open (e.g. data imported from this browser). */
   notice?: string
+  /** Connecting assistants (ChatGPT, Claude…) through the MCP, when the backend offers it. */
+  assistant?: AssistantAccess
 }
 
-export default function App({ initialDocument, store, account, notice }: AppProps) {
+export type AssistantAccess = { mcpUrl: string; access: OAuthConsent }
+
+/** Nothing loaded yet: the account was just created. */
+function isEmptyAccount(document: ResumeDocument) {
+  return (
+    !document.profile.name.trim() &&
+    document.profile.jobs.length === 0 &&
+    document.bank.length === 0 &&
+    document.cvs.length === 0 &&
+    document.applications.length === 0
+  )
+}
+
+export default function App({ initialDocument, store, account, notice, assistant }: AppProps) {
   const { doc, setDoc, status: saveStatus, retry: retrySave } = useDocumentSync(store, initialDocument)
   const [noticeOpen, setNoticeOpen] = useState(Boolean(notice))
+  const [assistantOpen, setAssistantOpen] = useState(false)
+  const connections = useConnectedApps(assistant?.access)
+  const assistantConnected = (connections.apps?.length ?? 0) > 0
   const [screen, setScreen] = useState<'home' | 'workspace'>('home')
   const [homeSection, setHomeSection] = useState<'applications' | 'projects' | 'personal' | 'experience' | 'library'>('applications')
   const [libraryKey, setLibraryKey] = useState(0)
@@ -871,6 +892,7 @@ export default function App({ initialDocument, store, account, notice }: AppProp
         save={saveStatus}
         onRetrySave={retrySave}
         account={account}
+        assistant={assistant ? { connected: assistantConnected, onOpen: () => setAssistantOpen(true) } : undefined}
       />
       <div className="shell-main">
       {notice && noticeOpen ? (
@@ -880,6 +902,9 @@ export default function App({ initialDocument, store, account, notice }: AppProp
             ×
           </button>
         </div>
+      ) : null}
+      {assistant && !inWorkspace && isEmptyAccount(doc) ? (
+        <Onboarding connected={assistantConnected} onConnect={() => setAssistantOpen(true)} />
       ) : null}
       {inWorkspace ? (
       <header className="topbar">
@@ -1003,6 +1028,7 @@ export default function App({ initialDocument, store, account, notice }: AppProp
           onChange={changeTracker}
           onOpenCv={openCvVersion}
           onBuildCv={buildCvFor}
+          assistant={assistant ? { connected: assistantConnected, onConnect: () => setAssistantOpen(true) } : undefined}
         />
       ) : !inWorkspace && homeSection === 'experience' ? (
         <ExperienceMaster
@@ -1100,6 +1126,17 @@ export default function App({ initialDocument, store, account, notice }: AppProp
       </>
       )}
       </div>
+      {assistant && assistantOpen ? (
+        <ConnectAssistant
+          mcpUrl={assistant.mcpUrl}
+          apps={connections.apps}
+          onDisconnect={connections.disconnect}
+          onClose={() => {
+            setAssistantOpen(false)
+            void connections.refresh()
+          }}
+        />
+      ) : null}
     </div>
   )
 }

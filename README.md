@@ -65,26 +65,32 @@ vercel deploy --prod      # from the repo root (project already linked in .verce
 Do not `supabase config push` this repo's `config.toml` to the cloud: it holds local-dev values
 (email confirmations and MFA off). Run `supabase config diff` first and push only what you mean to.
 
-## MCP (Claude)
+## MCP (Claude, ChatGPT, Gemini…)
 
-`supabase/functions/mcp` is a remote MCP server so Claude can drive the tracker:
-`https://attrxmtjyjzfgopfrgnk.supabase.co/functions/v1/mcp`.
+The assistant is the main way to use Resume: "Actualizá mi info en Resume", "Armemos el CV para
+<link>", "Me confirmaron de Acme, paso al challenge el 20/3". `supabase/functions/mcp` is a remote
+MCP server at `https://attrxmtjyjzfgopfrgnk.supabase.co/functions/v1/mcp`.
 
-- Tools: `get_profile`, `list_experiences`, `list_statuses`, `search_applications`, `get_application`,
-  `check_duplicates`, `create_application` (refuses likely duplicates until confirmed),
-  `move_application`, `add_note`, `update_application`, `list_cvs`, `attach_cv`; prompt `nuevo-job`.
+- The tools live in `src/mcp` and work on the whole document through the `DocumentStore` port, so
+  they change data exactly like the app (same domain code, same incremental saves):
+  `describe_model`, `get_document`, `update_document` (JSON Patch over the document; paths can
+  select items by `[id=…]`), `create_cv`, `build_cv_version`, `delete_cv`, `create_application`
+  (refuses likely duplicates until confirmed), `move_application` (creates statuses that do not
+  exist), `add_note`, `update_application`, `delete_application`, `delete_status`,
+  `search_applications`, `get_application`, `check_duplicates`, `list_experiences`.
+  Prompts: `actualizar-mi-info`, `armar-cv`, `novedad`.
+- Everything is open: every entity keeps extra data under `extra`, status and event kinds are
+  free, events dated in the future are "coming up".
 - Auth: Supabase Auth's OAuth 2.1 server with dynamic client registration. Clients are sent to
-  `/oauth/consent` in the app (`src/ui/Consent.tsx`); tools run as the signed-in user, so RLS applies.
-  Any client can register: only approve consent requests you started.
-- The domain rules (`src/domain/applications.ts`, `applicationFilters.ts`) are shared with the app.
-
-Connect: claude.ai → Settings → Connectors → Add custom connector → the URL above (it then works in
-the desktop and mobile apps too). Claude Code: `claude mcp add --transport http cv-tracker <url>`.
+  `/oauth/consent` (`src/ui/Consent.tsx`); tools run as the signed-in user, so RLS applies. The app
+  lists connected assistants and can disconnect them.
+- `npm run mcp:build` bundles `src/mcp` with Vite into `supabase/functions/mcp/generated` (gitignored).
 
 ```bash
-npx supabase functions serve mcp                    # local: http://127.0.0.1:54321/functions/v1/mcp
-npm run test:mcp                                    # with the function served
-npx supabase functions deploy mcp --remote=attrxmtjyjzfgopfrgnk --no-verify-jwt
+npm run mcp:serve                     # build + serve locally: http://127.0.0.1:54321/functions/v1/mcp
+npm test                              # includes the tools, over an in-memory store
+npm run test:mcp                      # end to end against the served function
+npm run mcp:deploy -- --remote=attrxmtjyjzfgopfrgnk
 ```
 
 ## Checks

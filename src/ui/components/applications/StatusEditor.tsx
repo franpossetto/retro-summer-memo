@@ -115,6 +115,7 @@ export function StatusEditor({ statuses, applications, onChange, onClose }: Stat
                       {item.label}
                     </option>
                   ))}
+                  {statusKinds.some((item) => item.kind === status.kind) ? null : <option value={status.kind}>{status.kind} (en proceso)</option>}
                 </select>
                 <span className="status-count" title="Postulaciones en este estado">
                   {counts.get(status.id) ?? 0}

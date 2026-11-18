@@ -163,16 +163,16 @@ export function addApplicationNote(application: Application, text: string, now: 
   }
 }
 
-/** Deletes a note. Status changes stay: they are the history of the process. */
+/** Deletes a note or any other event. Status changes stay: they are the history of the process. */
 export function removeApplicationNote(application: Application, eventId: string, now: Date = new Date()): Application {
-  const events = application.events.filter((event) => event.id !== eventId || event.kind !== 'note')
+  const events = application.events.filter((event) => event.id !== eventId || event.kind === 'status')
   if (events.length === application.events.length) return application
   return { ...application, events, updatedAt: now.toISOString() }
 }
 
 export function updateApplication(
   application: Application,
-  patch: Partial<Pick<Application, 'company' | 'title' | 'url' | 'posting' | 'location' | 'appliedOn' | 'attachment'>>,
+  patch: Partial<Pick<Application, 'company' | 'title' | 'url' | 'posting' | 'location' | 'appliedOn' | 'attachment' | 'extra'>>,
   now: Date = new Date(),
 ): Application {
   const next = { ...application, ...patch, updatedAt: now.toISOString() }

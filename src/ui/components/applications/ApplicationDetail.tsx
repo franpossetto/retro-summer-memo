@@ -8,8 +8,12 @@ import {
   type Application,
   type ApplicationStatus,
 } from '../../../domain/applications'
+import { upcomingEvents } from '../../../domain/applicationFilters'
 import type { Cv } from '../../../domain/model'
 import { formatDateTime, formatDay, relativeTime } from '../../format'
+import { PromptHint } from '../assistant/PromptHint'
+import { prompts } from '../assistant/prompts'
+import { ExtraFields } from '../ExtraFields'
 import { CvAttachmentPicker } from './CvAttachmentPicker'
 import { resolveVersion } from './cvs'
 import { DuplicateAlert } from './DuplicateAlert'
@@ -27,6 +31,21 @@ type ApplicationDetailProps = {
   onSelect: (applicationId: string) => void
   onOpenCv: (cvId: string, versionId: string) => void
   onBuildCv: () => void
+  assistant?: { connected: boolean; onConnect: () => void }
+}
+
+const eventKindLabels: Record<string, string> = {
+  interview: 'Entrevista',
+  call: 'Llamada',
+  meeting: 'Reunión',
+  email: 'Mail',
+  task: 'Tarea',
+  challenge: 'Challenge',
+  offer: 'Oferta',
+}
+
+function eventKindLabel(kind: string) {
+  return eventKindLabels[kind] ?? kind.charAt(0).toUpperCase() + kind.slice(1).replace(/[-_]+/g, ' ')
 }
 
 export function ApplicationDetail({
@@ -41,6 +60,7 @@ export function ApplicationDetail({
   onSelect,
   onOpenCv,
   onBuildCv,
+  assistant,
 }: ApplicationDetailProps) {
   /** Status picked in the step form; null follows wherever the application is now. */
   const [picked, setPicked] = useState<string | null>(null)
@@ -51,7 +71,8 @@ export function ApplicationDetail({
 
   const current = statusById.get(application.statusId)
   const index = statuses.findIndex((status) => status.id === application.statusId)
-  const next = current?.kind === 'active' ? statuses.slice(index + 1).find((status) => status.kind !== 'withdrawn') : undefined
+  const closed = current?.kind === 'offer' || current?.kind === 'rejected' || current?.kind === 'withdrawn'
+  const next = current && !closed ? statuses.slice(index + 1).find((status) => status.kind !== 'withdrawn' && status.kind !== 'rejected') : undefined
   const target = picked ?? application.statusId
   const moving = target !== application.statusId
   const canSubmit = moving || note.trim() !== ''
@@ -74,7 +95,9 @@ export function ApplicationDetail({
   const attachedCv = attachment?.kind === 'cv' ? cvs.find((cv) => cv.id === attachment.cvId) : undefined
   const attachedVersionId = attachment?.kind === 'cv' ? attachment.versionId : ''
   const appliedOn = application.appliedOn || application.createdAt.slice(0, 10)
-  const history = [...application.events].reverse()
+  const upcoming = upcomingEvents(application)
+  const scheduled = new Set(upcoming.map((event) => event.id))
+  const history = application.events.filter((event) => !scheduled.has(event.id)).reverse()
 
   return (
     <aside className="tracker-detail" aria-label={`Postulación a ${application.company}`}>
@@ -100,6 +123,25 @@ export function ApplicationDetail({
           </a>
         ) : null}
       </p>
+
+      {upcoming.length > 0 ? (
+        <section className="tracker-section">
+          <h3>Agendado</h3>
+          <ul className="tracker-upcoming">
+            {upcoming.map((event) => (
+              <li key={event.id}>
+                <time dateTime={event.at}>{formatDateTime(event.at)}</time>
+                <span>
+                  {event.kind !== 'note' ? <strong>{eventKindLabel(event.kind)}</strong> : null} {event.text}
+                </span>
+                <button type="button" className="view-close" aria-label="Quitar" title="Quitar" onClick={() => onChange(removeApplicationNote(application, event.id))}>
+                  ×
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
 
       <section className="tracker-section">
         <h3>Próximo paso</h3>
@@ -130,6 +172,9 @@ export function ApplicationDetail({
             {moving ? `Mover a ${statusById.get(target)?.name ?? ''}` : 'Agregar nota'}
           </button>
         </div>
+        {assistant ? (
+          <PromptHint prompt={prompts.news(application.company, next?.name)} onConnect={assistant.connected ? undefined : assistant.onConnect} />
+        ) : null}
       </section>
 
       <section className="tracker-section">
@@ -156,6 +201,16 @@ export function ApplicationDetail({
         ) : null}
       </section>
 
+      <section className="tracker-section">
+        <h3>Más datos</h3>
+        <ExtraFields
+          key={application.id}
+          value={application.extra}
+          empty="Sueldo, recruiter, modalidad, contacto… lo que quieras guardar de esta postulación."
+          onChange={(extra) => onChange(updateApplication(application, { extra }))}
+        />
+      </section>
+
       <DuplicateAlert matches={related} statuses={statuses} onOpen={onSelect} related />
 
       <section className="tracker-section">
@@ -169,12 +224,16 @@ export function ApplicationDetail({
                   <span>
                     Pasó a <strong>{statusById.get(event.statusId)?.name ?? 'un estado borrado'}</strong>
                   </span>
-                ) : (
+                ) : event.kind === 'note' ? (
                   <p className="tracker-note">{event.text}</p>
+                ) : (
+                  <p className="tracker-note">
+                    <strong>{eventKindLabel(event.kind)}</strong> {event.text}
+                  </p>
                 )}
                 <time dateTime={event.at}>{formatDateTime(event.at)}</time>
               </div>
-              {event.kind === 'note' ? (
+              {event.kind !== 'status' ? (
                 <button type="button" className="view-close" aria-label="Borrar nota" title="Borrar nota" onClick={() => onChange(removeApplicationNote(application, event.id))}>
                   ×
                 </button>

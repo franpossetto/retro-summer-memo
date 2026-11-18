@@ -4,7 +4,7 @@ import { openDocument, type OpenedDocument } from '../app/openDocument'
 import { createBackend, type Backend } from '../backend'
 import type { AuthGateway, Session, SocialProvider } from '../ports/auth'
 import type { DocumentStore } from '../ports/documentStore'
-import App from './App'
+import App, { type AssistantAccess } from './App'
 import { ConsentScreen } from './Consent'
 import { consentRequestId } from './consentRoute'
 
@@ -54,6 +54,7 @@ function SignedIn({ backend, session }: { backend: SupabaseBackend; session: Ses
       store={store}
       importFromBrowser
       account={{ email: session.email, onSignOut: () => void backend.auth.signOut() }}
+      assistant={{ mcpUrl: backend.mcpUrl, access: backend.consent }}
     />
   )
 }
@@ -64,10 +65,12 @@ function DocumentGate({
   store,
   importFromBrowser = false,
   account,
+  assistant,
 }: {
   store: DocumentStore
   importFromBrowser?: boolean
   account?: { email: string; onSignOut: () => void }
+  assistant?: AssistantAccess
 }) {
   const [state, setState] = useState<GateState>({ status: 'loading' })
   const [attempt, setAttempt] = useState(0)
@@ -111,7 +114,7 @@ function DocumentGate({
   }
   const notice =
     state.opened.created === 'imported' ? 'Importamos a tu cuenta los datos que tenías en este navegador.' : undefined
-  return <App initialDocument={state.opened.document} store={store} account={account} notice={notice} />
+  return <App initialDocument={state.opened.document} store={store} account={account} notice={notice} assistant={assistant} />
 }
 
 const providerLabel: Record<SocialProvider, string> = { github: 'GitHub', google: 'Google' }

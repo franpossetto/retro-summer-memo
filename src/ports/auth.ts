@@ -28,6 +28,9 @@ export type AuthorizationRequest = {
   scopes: string[]
 }
 
+/** An app the user authorized (Claude, ChatGPT… through the MCP). */
+export type ConnectedApp = { clientId: string; name: string; grantedAt: string }
+
 /** Consent step of the backend's OAuth server (only backends that act as one). */
 export interface OAuthConsent {
   /** `done`: the user already approved this client before; just follow `redirectUrl`. */
@@ -35,4 +38,8 @@ export interface OAuthConsent {
   /** Both return where to send the browser next (back to the client, with a code or an error). */
   approve(authorizationId: string): Promise<string>
   deny(authorizationId: string): Promise<string>
+  /** Apps the user has authorized, newest first. */
+  connectedApps(): Promise<ConnectedApp[]>
+  /** Revokes an app's access: it has to ask (and be approved) again. */
+  disconnect(clientId: string): Promise<void>
 }

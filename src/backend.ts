@@ -16,8 +16,10 @@ export type Backend =
   | {
       kind: 'supabase'
       auth: AuthGateway
-      /** Consent screen for apps connecting through OAuth (Claude via the MCP). */
+      /** Consent screen and connected apps for assistants using the MCP. */
       consent: OAuthConsent
+      /** Where assistants connect (the MCP Edge Function). */
+      mcpUrl: string
       storeFor(session: Session): DocumentStore
       /** Local inbox for sign-in emails while developing against `supabase start`. */
       devMailbox: string
@@ -38,6 +40,7 @@ export function createBackend(env: ImportMetaEnv = import.meta.env): Backend {
       redirectTo: () => window.location.origin + window.location.pathname + window.location.search,
     }),
     consent: createSupabaseConsent(client),
+    mcpUrl: `${url.replace(/\/+$/, '')}/functions/v1/mcp`,
     storeFor: (session) => createSupabaseStore(client, session.userId),
     devMailbox: env.VITE_DEV_MAILBOX_URL ?? '',
   }

@@ -6,6 +6,7 @@ import {
   filterApplications,
   isStale,
   lastActivity,
+  upcomingEvents,
   type ApplicationQuery,
   type ApplicationScope,
   type ApplicationSort,
@@ -18,12 +19,14 @@ import {
   type ApplicationStatus,
 } from '../../../domain/applications'
 import type { Cv, ResumeDocument } from '../../../domain/model'
-import { formatDay, relativeTime } from '../../format'
+import { formatDateTime, formatDay, relativeTime } from '../../format'
 import { ApplicationDetail } from './ApplicationDetail'
 import { ApplicationForm, type ApplicationFormValues } from './ApplicationForm'
 import { cvLabel } from './cvs'
 import { StatusSelect } from './StatusPill'
 import { StatusEditor } from './StatusEditor'
+import { PromptHint } from '../assistant/PromptHint'
+import { prompts } from '../assistant/prompts'
 
 export type TrackerData = Pick<ResumeDocument, 'applications' | 'applicationStatuses'>
 
@@ -35,6 +38,8 @@ type ApplicationsProps = {
   onOpenCv: (cvId: string, versionId: string) => void
   /** Opens the CV composer for this application; the new CV gets attached to it. */
   onBuildCv: (application: Application) => void
+  /** Assistants connected through the MCP: the requests to make to them are suggested. */
+  assistant?: { connected: boolean; onConnect: () => void }
 }
 
 type ViewMode = 'list' | 'board'
@@ -73,7 +78,7 @@ function loadQuery(): ApplicationQuery {
   return defaultQuery()
 }
 
-export function Applications({ applications, statuses, cvs, onChange, onOpenCv, onBuildCv }: ApplicationsProps) {
+export function Applications({ applications, statuses, cvs, onChange, onOpenCv, onBuildCv, assistant }: ApplicationsProps) {
   const [query, setQuery] = useState<ApplicationQuery>(loadQuery)
   const [view, setView] = useState<ViewMode>(loadView)
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -201,12 +206,14 @@ export function Applications({ applications, statuses, cvs, onChange, onOpenCv, 
         </button>
       </div>
 
+      {assistant ? <PromptHint prompt={prompts.buildCv} onConnect={assistant.connected ? undefined : assistant.onConnect} /> : null}
+
       {applications.length === 0 ? (
         <div className="tracker-empty">
           <h2>Todavía no cargaste postulaciones</h2>
           <p>
-            Pegá el link de un aviso y te avisamos si ya te postulaste antes a ese aviso, a ese puesto o a esa empresa. Después movés cada
-            postulación por tus estados (CV enviado, Call con RRHH, Challenge técnico…) y anotás lo que pasa en cada paso.
+            Pedile a tu asistente “Armemos el CV para” y el link del aviso: chequea si ya te postulaste, carga la postulación y arma el CV.
+            Después contale las novedades (“me llamaron de…”) y va moviendo cada postulación por tus estados. También podés cargarlas a mano.
           </p>
           <button type="button" className="button primary" onClick={() => setForm({ mode: 'new' })}>
             Cargar la primera
@@ -333,6 +340,7 @@ export function Applications({ applications, statuses, cvs, onChange, onOpenCv, 
                 onSelect={setSelectedId}
                 onOpenCv={onOpenCv}
                 onBuildCv={() => onBuildCv(selected)}
+                assistant={assistant}
               />
             ) : null}
           </div>
@@ -388,10 +396,18 @@ type ResultsProps = {
 }
 
 function ActivityCell({ application, statusById, now }: { application: Application; statusById: Map<string, ApplicationStatus>; now: Date }) {
+  const next = upcomingEvents(application, now)[0]
+  if (next) {
+    return (
+      <span className="tracker-activity is-upcoming" title={next.text}>
+        Próx.: {formatDateTime(next.at)}
+      </span>
+    )
+  }
   const stale = isStale(application, statusById, STALE_DAYS, now)
   return (
     <span className={stale ? 'tracker-activity is-stale' : 'tracker-activity'} title={stale ? 'Sin novedades hace rato: ¿hacés seguimiento?' : undefined}>
-      {relativeTime(lastActivity(application), now)}
+      {relativeTime(lastActivity(application, now), now)}
     </span>
   )
 }

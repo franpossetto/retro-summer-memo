@@ -29,5 +29,16 @@ export function createSupabaseConsent(client: SupabaseClient): OAuthConsent {
       if (error) throw error
       return data.redirect_url
     },
+    async connectedApps() {
+      const { data, error } = await client.auth.oauth.listGrants()
+      if (error) throw error
+      return (data ?? [])
+        .map((grant) => ({ clientId: grant.client.id, name: grant.client.name || 'App', grantedAt: grant.granted_at }))
+        .sort((left, right) => right.grantedAt.localeCompare(left.grantedAt))
+    },
+    async disconnect(clientId) {
+      const { error } = await client.auth.oauth.revokeGrant({ clientId })
+      if (error) throw error
+    },
   }
 }

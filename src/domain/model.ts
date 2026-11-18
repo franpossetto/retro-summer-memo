@@ -472,6 +472,27 @@ export function graphFromSelection(
   return { nodes: [...base.nodes, roleNode, ...bullets], edges }
 }
 
+/**
+ * What a new account starts with: no profile data, experiences, CVs nor applications (the user's
+ * assistant fills them through the MCP), just the CV sections and the default pipeline.
+ */
+export function createEmptyDocument(): ResumeDocument {
+  return {
+    profile: emptyProfile(),
+    sections: defaultSections(),
+    roleGraphs: [],
+    bank: [],
+    knowledge: [],
+    applications: [],
+    applicationStatuses: defaultApplicationStatuses(),
+    activeCvId: '',
+    nodes: [],
+    edges: [],
+    cvs: [],
+  }
+}
+
+/** A document with an example CV and the shipped experience bank (tests and demos). */
 export function createSeedDocument(): ResumeDocument {
   const profile = emptyProfile()
   const { nodes, edges } = personalGraph(profile)

@@ -10,9 +10,11 @@ type SidebarProps = {
   save: SaveStatus
   onRetrySave: () => void
   account?: { email: string; onSignOut: () => void }
+  /** Assistants (ChatGPT, Claude…) connected through the MCP. */
+  assistant?: { connected: boolean; onOpen: () => void }
 }
 
-export function Sidebar({ section, onApplications, onProjects, onPersonal, onExperience, onLibrary, save, onRetrySave, account }: SidebarProps) {
+export function Sidebar({ section, onApplications, onProjects, onPersonal, onExperience, onLibrary, save, onRetrySave, account, assistant }: SidebarProps) {
   return (
     <nav className="sidebar" aria-label="Secciones">
       <button
@@ -65,6 +67,18 @@ export function Sidebar({ section, onApplications, onProjects, onPersonal, onExp
       >
         <LibraryIcon />
       </button>
+      {assistant ? (
+        <button
+          type="button"
+          className="sidebar-item sidebar-assistant"
+          aria-label={assistant.connected ? 'Asistente conectado' : 'Conectá tu asistente'}
+          title={assistant.connected ? 'Asistente conectado' : 'Conectá tu asistente'}
+          onClick={assistant.onOpen}
+        >
+          <AssistantIcon />
+          {assistant.connected ? <span className="sidebar-badge" aria-hidden="true" /> : null}
+        </button>
+      ) : null}
       <div className="sidebar-foot">
         <SaveIndicator save={save} onRetry={onRetrySave} />
         {account ? (
@@ -102,6 +116,21 @@ function SaveIndicator({ save, onRetry }: { save: SaveStatus; onRetry: () => voi
     <span className={`save-indicator is-${save.state}`} role="status" title={label} aria-label={label}>
       <span className="save-dot" aria-hidden="true" />
     </span>
+  )
+}
+
+function AssistantIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
+      <path
+        d="M3 4.5A1.5 1.5 0 0 1 4.5 3h9A1.5 1.5 0 0 1 15 4.5v6a1.5 1.5 0 0 1-1.5 1.5H8l-3.5 3v-3h0A1.5 1.5 0 0 1 3 10.5z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinejoin="round"
+      />
+      <path d="M6.5 7.5h5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
   )
 }
 
