@@ -1,13 +1,25 @@
 import type { Session as SupabaseSession, SupabaseClient } from '@supabase/supabase-js'
-import type { AuthGateway, Session } from '../../ports/auth'
+import type { AuthGateway, Session, SocialProvider } from '../../ports/auth'
+
+const socialProviders: SocialProvider[] = ['github', 'google']
 
 export function createSupabaseAuth(
   client: SupabaseClient,
   /** `redirectTo` is read at sign-in time: the link must bring the user back to where they were. */
-  options: { google: boolean; redirectTo: () => string },
+  options: { url: string; key: string; redirectTo: () => string },
 ): AuthGateway {
   return {
-    providers: { email: true, google: options.google },
+    async providers() {
+      // Whatever is enabled in Supabase Auth shows up, without redeploying the app.
+      try {
+        const response = await fetch(`${options.url}/auth/v1/settings`, { headers: { apikey: options.key } })
+        const settings = (await response.json()) as { external?: Record<string, boolean> }
+        const external = settings.external ?? {}
+        return { email: external.email !== false, social: socialProviders.filter((provider) => external[provider] === true) }
+      } catch {
+        return { email: true, social: [] }
+      }
+    },
     async current() {
       const { data } = await client.auth.getSession()
       return toSession(data.session)
@@ -20,8 +32,8 @@ export function createSupabaseAuth(
       const { error } = await client.auth.signInWithOtp({ email, options: { emailRedirectTo: options.redirectTo() } })
       if (error) throw error
     },
-    async signInWithGoogle() {
-      const { error } = await client.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: options.redirectTo() } })
+    async signInWithProvider(provider) {
+      const { error } = await client.auth.signInWithOAuth({ provider, options: { redirectTo: options.redirectTo() } })
       if (error) throw error
     },
     async signOut() {

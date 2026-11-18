@@ -4,7 +4,9 @@ import type { AuthorizationRequest, OAuthConsent } from '../ports/auth'
 type State =
   | { status: 'loading' }
   | { status: 'ask'; request: AuthorizationRequest }
-  | { status: 'leaving'; message: string }
+  | { status: 'sending'; message: string }
+  /** Decided: the way back to the client. Not followed automatically, see BackToClient. */
+  | { status: 'back'; redirectUrl: string; approved: boolean; already: boolean }
   | { status: 'error'; message: string }
 
 function hostOf(uri: string) {
@@ -25,8 +27,7 @@ export function ConsentScreen({ consent, authorizationId, email }: { consent: OA
       (result) => {
         if (!active) return
         if (result.kind === 'done') {
-          setState({ status: 'leaving', message: 'Ya lo habías autorizado. Volviendo…' })
-          window.location.assign(result.redirectUrl)
+          setState({ status: 'back', redirectUrl: result.redirectUrl, approved: true, already: true })
         } else {
           setState({ status: 'ask', request: result.request })
         }
@@ -41,10 +42,10 @@ export function ConsentScreen({ consent, authorizationId, email }: { consent: OA
   }, [consent, authorizationId])
 
   async function decide(approve: boolean) {
-    setState({ status: 'leaving', message: approve ? 'Autorizado. Volviendo…' : 'Cancelado. Volviendo…' })
+    setState({ status: 'sending', message: approve ? 'Autorizando…' : 'Cancelando…' })
     try {
       const url = approve ? await consent.approve(authorizationId) : await consent.deny(authorizationId)
-      window.location.assign(url)
+      setState({ status: 'back', redirectUrl: url, approved: approve, already: false })
     } catch (error) {
       setState({ status: 'error', message: error instanceof Error ? error.message : String(error) })
     }
@@ -54,7 +55,8 @@ export function ConsentScreen({ consent, authorizationId, email }: { consent: OA
     <div className="signin">
       <div className="signin-card consent-card">
         {state.status === 'loading' ? <p>Cargando el pedido de acceso…</p> : null}
-        {state.status === 'leaving' ? <p>{state.message}</p> : null}
+        {state.status === 'sending' ? <p>{state.message}</p> : null}
+        {state.status === 'back' ? <BackToClient {...state} /> : null}
         {state.status === 'error' ? (
           <>
             <h1>No se pudo completar</h1>
@@ -103,5 +105,48 @@ export function ConsentScreen({ consent, authorizationId, email }: { consent: OA
         ) : null}
       </div>
     </div>
+  )
+}
+
+/**
+ * The way back to the app that asked (ChatGPT, Claude…), carrying the authorization code.
+ * Shown instead of redirecting right away: the app may be open in another browser or Chrome
+ * profile than this one, and the code only works there. It is single-use and short-lived.
+ */
+function BackToClient({ redirectUrl, approved, already }: { redirectUrl: string; approved: boolean; already: boolean }) {
+  const [copied, setCopied] = useState(false)
+  const host = hostOf(redirectUrl)
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(redirectUrl)
+      setCopied(true)
+    } catch {
+      setCopied(false)
+    }
+  }
+
+  return (
+    <>
+      <h1>{!approved ? 'Cancelado' : already ? 'Ya estaba autorizado' : 'Autorizado'}</h1>
+      <p>{approved ? `Volvé a ${host} para terminar de conectar.` : `Volvé a ${host}: no va a tener acceso.`}</p>
+      <div className="signin-actions">
+        <a className="button primary" href={redirectUrl}>
+          Volver a {host}
+        </a>
+        <button type="button" className="button" onClick={() => void copy()}>
+          {copied ? 'Link copiado' : 'Copiar link de vuelta'}
+        </button>
+      </div>
+      {approved ? (
+        <>
+          <p className="signin-hint">
+            ¿Lo tenés abierto en otro navegador o en otro perfil de Chrome? Copiá el link y abrilo ahí. Sirve una sola vez y vence en
+            unos minutos.
+          </p>
+          <input className="consent-link" readOnly aria-label="Link de vuelta" value={redirectUrl} onFocus={(event) => event.target.select()} />
+        </>
+      ) : null}
+    </>
   )
 }

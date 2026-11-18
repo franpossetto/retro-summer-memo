@@ -3,15 +3,18 @@ export type Session = {
   email: string
 }
 
+export type SocialProvider = 'github' | 'google'
+
 /** Sign-in for backends that keep data per user. */
 export interface AuthGateway {
-  /** Providers offered on the sign-in screen. */
-  readonly providers: { email: boolean; google: boolean }
+  /** Sign-in methods enabled on the backend right now (offered on the sign-in screen). */
+  providers(): Promise<{ email: boolean; social: SocialProvider[] }>
   current(): Promise<Session | null>
   onChange(listener: (session: Session | null) => void): () => void
   /** Sends a one-time sign-in link to `email`. */
   signInWithEmail(email: string): Promise<void>
-  signInWithGoogle(): Promise<void>
+  /** Leaves for the provider's sign-in page; comes back to the current page. */
+  signInWithProvider(provider: SocialProvider): Promise<void>
   signOut(): Promise<void>
 }
 

@@ -32,7 +32,8 @@ export function createBackend(env: ImportMetaEnv = import.meta.env): Backend {
   return {
     kind: 'supabase',
     auth: createSupabaseAuth(client, {
-      google: env.VITE_AUTH_GOOGLE === 'true',
+      url,
+      key,
       // Back to the same page (e.g. /oauth/consent?authorization_id=…), without any hash.
       redirectTo: () => window.location.origin + window.location.pathname + window.location.search,
     }),

@@ -2,7 +2,7 @@ import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
 import { readStoredDocument } from '../adapters/local'
 import { openDocument, type OpenedDocument } from '../app/openDocument'
 import { createBackend, type Backend } from '../backend'
-import type { AuthGateway, Session } from '../ports/auth'
+import type { AuthGateway, Session, SocialProvider } from '../ports/auth'
 import type { DocumentStore } from '../ports/documentStore'
 import App from './App'
 import { ConsentScreen } from './Consent'
@@ -114,11 +114,32 @@ function DocumentGate({
   return <App initialDocument={state.opened.document} store={store} account={account} notice={notice} />
 }
 
+const providerLabel: Record<SocialProvider, string> = { github: 'GitHub', google: 'Google' }
+
+function signInError(reason: unknown): string {
+  const message = reason instanceof Error ? reason.message : String(reason)
+  if (/rate limit/i.test(message)) {
+    return 'Supabase no deja mandar más mails de login por ahora (tiene un límite por hora). Entrá con GitHub o probá de nuevo en un rato.'
+  }
+  return message
+}
+
 function SignIn({ auth, devMailbox, lede }: { auth: AuthGateway; devMailbox: string; lede?: string }) {
   const [email, setEmail] = useState('')
   const [sentTo, setSentTo] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  const [social, setSocial] = useState<SocialProvider[]>([])
+
+  useEffect(() => {
+    let active = true
+    auth.providers().then((providers) => {
+      if (active) setSocial(providers.social)
+    })
+    return () => {
+      active = false
+    }
+  }, [auth])
 
   async function sendLink(event: FormEvent) {
     event.preventDefault()
@@ -130,18 +151,18 @@ function SignIn({ auth, devMailbox, lede }: { auth: AuthGateway; devMailbox: str
       await auth.signInWithEmail(address)
       setSentTo(address)
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : String(reason))
+      setError(signInError(reason))
     } finally {
       setBusy(false)
     }
   }
 
-  async function google() {
+  async function withProvider(provider: SocialProvider) {
     setError('')
     try {
-      await auth.signInWithGoogle()
+      await auth.signInWithProvider(provider)
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : String(reason))
+      setError(signInError(reason))
     }
   }
 
@@ -170,11 +191,12 @@ function SignIn({ auth, devMailbox, lede }: { auth: AuthGateway; devMailbox: str
           </>
         ) : (
           <>
-            {auth.providers.google ? (
-              <button type="button" className="button signin-google" onClick={() => void google()}>
-                Continuar con Google
+            {social.map((provider) => (
+              <button key={provider} type="button" className="button signin-social" onClick={() => void withProvider(provider)}>
+                Continuar con {providerLabel[provider]}
               </button>
-            ) : null}
+            ))}
+            {social.length > 0 ? <p className="signin-or">o con un link a tu email</p> : null}
             <form className="signin-form" onSubmit={(event) => void sendLink(event)}>
               <label className="field">
                 <span>Email</span>
