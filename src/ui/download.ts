@@ -1,5 +1,5 @@
-import type { CatalogSection, Snapshot } from './model'
-import type { PageSize } from './fonts'
+import type { CatalogSection, Snapshot } from '../domain/model'
+import type { PageSize } from '../domain/fonts'
 
 export function downloadPdf(pageSize: PageSize, title: string) {
   const previousTitle = document.title

@@ -4,7 +4,7 @@ import {
   experienceLevels,
   matchExperiencesToPosting,
   type Experience,
-} from '../experiences'
+} from '../../domain/experiences'
 import {
   emptyEducationEntry,
   emptyJob,
@@ -16,14 +16,14 @@ import {
   type KnowledgeAnswer,
   type Profile,
   type ProfileField,
-} from '../model'
-import { defaultFont, fonts, type FontId } from '../fonts'
+} from '../../domain/model'
+import { defaultFont, fonts, type FontId } from '../../domain/fonts'
 import {
   applyLinkedInImport,
   linkedInImportSummary,
   parseLinkedInPaste,
-} from '../linkedinImport'
-import { templates, type TemplateId } from '../templates'
+} from '../../domain/linkedinImport'
+import { templates, type TemplateId } from '../../domain/templates'
 
 export type CvDraft = {
   title: string

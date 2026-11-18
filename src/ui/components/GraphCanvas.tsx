@@ -57,9 +57,10 @@ import {
   type SkillsData,
   type SkillsNode,
   type KnowledgeAnswer,
-} from '../model'
-import { filterExperiencesBank, type Experience } from '../experiences'
+} from '../../domain/model'
+import { filterExperiencesBank, type Experience } from '../../domain/experiences'
 import { SourceTable } from './SourceTable'
+import type { FlowNode } from '../flow'
 
 const HideContext = createContext<(id: string) => void>(() => {})
 
@@ -224,8 +225,6 @@ export type GraphCanvasProps = {
   onAddExperience: (preset: Experience, position?: XYPosition, sourceId?: string) => void
   onArrange: () => void
   onCleanGraph: () => void
-  visibleViews: { graph: boolean; table: boolean }
-  onToggleView: (view: 'graph' | 'table') => void
   onUpdateRole: (id: string, patch: Partial<RoleData>) => void
   onUpdateBullet: (id: string, patch: Partial<BulletData>) => void
   onUpdatePerson: (id: string, patch: Partial<Profile>) => void
@@ -272,9 +271,8 @@ const NodeEditContext = createContext<NodeEditApi>({
 })
 
 function isEditableNode(node: ResumeNode) {
-  if (node.type === 'prompt' || node.type === 'experience' || node.type === 'section' || node.type === 'skills') return false
-  if (node.type === 'role' && node.data.pending) return false
-  return node.type === 'person' || node.type === 'role' || node.type === 'bullet' || node.type === 'education'
+  if (node.type === 'role') return !node.data.pending
+  return node.type === 'person' || node.type === 'bullet' || node.type === 'education'
 }
 
 type ContextMenu = {
@@ -328,8 +326,6 @@ function GraphEditor({
   onAddExperience,
   onArrange,
   onCleanGraph,
-  visibleViews,
-  onToggleView,
   onUpdateRole,
   onUpdateBullet,
   onUpdatePerson,
@@ -353,7 +349,6 @@ function GraphEditor({
   const [skillDraft, setSkillDraft] = useState<XYPosition | null>(null)
   const [skillSearchNode, setSkillSearchNode] = useState<string | null>(null)
   const [catalogTab, setCatalogTab] = useState<'role' | 'experience'>('experience')
-  const [catalogFocus, setCatalogFocus] = useState(0)
   const [hoverRoleId, setHoverRoleId] = useState<string | null>(null)
   const promptTimer = useRef<number | null>(null)
   const [panelStacks, setPanelStacks] = useState<DockStacks>(loadGraphStacks)
@@ -788,16 +783,13 @@ function GraphEditor({
             onUseRoleGraph={onUseRoleGraph}
             tab={catalogTab}
             onTab={setCatalogTab}
-            focusToken={catalogFocus}
           />
         ) : id === 'inspector' ? (
           <InspectorBody
             selectedNode={selectedNode}
-            sections={sections}
             onUpdatePerson={onUpdatePerson}
             onUpdateRole={onUpdateRole}
             onUpdateBullet={onUpdateBullet}
-            onUpdateSkills={onUpdateSkills}
             onUpdateEducation={onUpdateEducation}
           />
         ) : id === 'skills' ? (
@@ -953,10 +945,9 @@ function GraphEditor({
                   sections={toggleableSections}
                   enabledSections={enabledSections}
                   onToggleSection={onToggleSection}
-                  visibleViews={visibleViews}
-                  onToggleView={onToggleView}
                   panelsOpen={panelsOpen}
                   onToggleGraphPanel={togglePanel}
+                  onArrange={onArrange}
                   onCleanGraph={onCleanGraph}
                   onDeleteNode={onDeleteNode}
                   onDeleteEdge={onDeleteEdge}
@@ -1047,19 +1038,15 @@ function GraphEditor({
 
 function InspectorBody({
   selectedNode,
-  sections,
   onUpdatePerson,
   onUpdateRole,
   onUpdateBullet,
-  onUpdateSkills,
   onUpdateEducation,
 }: {
   selectedNode: ResumeNode | null
-  sections: CatalogSection[]
   onUpdatePerson: (id: string, patch: Partial<Profile>) => void
   onUpdateRole: (id: string, patch: Partial<RoleData>) => void
   onUpdateBullet: (id: string, patch: Partial<BulletData>) => void
-  onUpdateSkills: (id: string, patch: Partial<SkillsData>) => void
   onUpdateEducation: (id: string, patch: Partial<EducationData>) => void
 }) {
   if (!selectedNode) {
@@ -1162,10 +1149,9 @@ function ContextMenu({
   sections,
   enabledSections,
   onToggleSection,
-  visibleViews,
-  onToggleView,
   panelsOpen,
   onToggleGraphPanel,
+  onArrange,
   onCleanGraph,
   onDeleteNode,
   onDeleteEdge,
@@ -1181,17 +1167,18 @@ function ContextMenu({
   sections: CatalogSection[]
   enabledSections: string[]
   onToggleSection: (id: string) => void
-  visibleViews: { graph: boolean; table: boolean }
-  onToggleView: (view: 'graph' | 'table') => void
   panelsOpen: GraphPanelsOpen
   onToggleGraphPanel: (panel: GraphPanelId) => void
+  onArrange: () => void
   onCleanGraph: () => void
   onDeleteNode: (id: string) => void
   onDeleteEdge: (id: string) => void
   onClose: () => void
 }) {
   const target = menu.target
-  const roleTarget = target.kind === 'role' ? nodes.find((node) => node.id === target.id && node.type === 'role') : null
+  const roleTarget = target.kind === 'role'
+    ? nodes.find((node): node is RoleNode => node.id === target.id && node.type === 'role')
+    : null
   const showPresets = (target.kind === 'role' && roleTarget && !roleTarget.data.pending) || target.kind === 'connect'
   const roleActions = target.kind === 'pane'
   const compact = target.kind === 'pane' || target.kind === 'edge' || target.kind === 'bullet' || target.kind === 'person' || target.kind === 'education'
@@ -1261,6 +1248,10 @@ function ContextMenu({
             <RoleSelectIcon />
             Existing work experience
           </button>
+          <button type="button" role="menuitem" className="context-menu-item" onClick={() => run(onArrange)}>
+            <GraphViewIcon />
+            Arrange graph
+          </button>
           <button type="button" role="menuitem" className="context-menu-item" onClick={() => run(onCleanGraph)}>
             <TrashIcon />
             Clean graph
@@ -1297,15 +1288,6 @@ function GraphViewIcon() {
       <circle cx="12" cy="4" r="1.5" fill="none" stroke="currentColor" strokeWidth="1.3" />
       <circle cx="8" cy="12" r="1.5" fill="none" stroke="currentColor" strokeWidth="1.3" />
       <path d="m5.3 5 1.8 5.5M10.7 5 8.8 10.5" fill="none" stroke="currentColor" strokeWidth="1.3" />
-    </svg>
-  )
-}
-
-function TableViewIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
-      <rect x="2" y="2.5" width="12" height="11" rx="1" fill="none" stroke="currentColor" strokeWidth="1.3" />
-      <path d="M2.5 6h11M6 6.5v6.5M10 6.5v6.5" fill="none" stroke="currentColor" strokeWidth="1.3" />
     </svg>
   )
 }
@@ -1363,7 +1345,6 @@ function ExperienceCatalog({
   onUseRoleGraph,
   tab,
   onTab,
-  focusToken,
 }: {
   nodes: ResumeNode[]
   edges: ResumeEdge[]
@@ -1373,13 +1354,7 @@ function ExperienceCatalog({
   onUseRoleGraph: (id: string, position: XYPosition) => void
   tab: 'role' | 'experience'
   onTab: (tab: 'role' | 'experience') => void
-  focusToken: number
 }) {
-  const searchRef = useRef<HTMLInputElement>(null)
-  useEffect(() => {
-    if (focusToken === 0) return
-    searchRef.current?.focus()
-  }, [focusToken])
   const bank = useContext(BankContext)
   const selectedRole = nodes.find((node) => node.selected && node.type === 'role')
   const [query, setQuery] = useState('')
@@ -1437,7 +1412,6 @@ function ExperienceCatalog({
           <label className="catalog-search">
             <span className="sr-only">Search experiences</span>
             <input
-              ref={searchRef}
               value={query}
               placeholder="Skill or metadata"
               onChange={(event) => setQuery(event.target.value)}
@@ -1507,7 +1481,7 @@ function isPromptChange(change: NodeChange): boolean {
   return 'id' in change && change.id.startsWith('prompt-')
 }
 
-function PersonNodeView({ id, data, selected }: NodeProps<PersonNode>) {
+function PersonNodeView({ id, data, selected }: NodeProps<FlowNode<PersonNode>>) {
   const { editingId, onUpdatePerson } = useContext(NodeEditContext)
   const editing = editingId === id
   const fields = data.fields.filter((field) => field.value.trim())
@@ -1560,7 +1534,7 @@ function PersonNodeView({ id, data, selected }: NodeProps<PersonNode>) {
   )
 }
 
-function SkillsNodeView({ id, data, selected }: NodeProps<SkillsNode>) {
+function SkillsNodeView({ id, data, selected }: NodeProps<FlowNode<SkillsNode>>) {
   const { editingId, onUpdateSkills } = useContext(NodeEditContext)
   const editing = editingId === id
   return (
@@ -1590,7 +1564,7 @@ function SkillsNodeView({ id, data, selected }: NodeProps<SkillsNode>) {
   )
 }
 
-function ExperienceSectionNodeView({ selected }: NodeProps<ExperienceSectionNode>) {
+function ExperienceSectionNodeView({ selected }: NodeProps<FlowNode<ExperienceSectionNode>>) {
   return (
     <div className={`${nodeClass(selected)} is-skills`}>
       <div className="node-kicker">Experience</div>
@@ -1600,7 +1574,7 @@ function ExperienceSectionNodeView({ selected }: NodeProps<ExperienceSectionNode
   )
 }
 
-function SectionNodeView({ data, selected }: NodeProps<SectionNode>) {
+function SectionNodeView({ data, selected }: NodeProps<FlowNode<SectionNode>>) {
   const sections = useContext(SectionsContext)
   const name = sections.find((section) => section.id === data.sectionId)?.name.trim() || 'Section'
   return (
@@ -1611,7 +1585,7 @@ function SectionNodeView({ data, selected }: NodeProps<SectionNode>) {
   )
 }
 
-function EducationNodeView({ id, data, selected }: NodeProps<EducationNode>) {
+function EducationNodeView({ id, data, selected }: NodeProps<FlowNode<EducationNode>>) {
   const { editingId, onUpdateEducation } = useContext(NodeEditContext)
   const editing = editingId === id
   const entries = data.entries.filter((entry) =>
@@ -1693,7 +1667,7 @@ function EducationNodeView({ id, data, selected }: NodeProps<EducationNode>) {
   )
 }
 
-function RoleNodeView({ id, data, selected }: NodeProps<RoleNode>) {
+function RoleNodeView({ id, data, selected }: NodeProps<FlowNode<RoleNode>>) {
   const { jobs, onPick } = useContext(RolePickContext)
   const { editingId, onUpdateRole } = useContext(NodeEditContext)
   const editing = editingId === id
@@ -1780,7 +1754,7 @@ function RoleNodeView({ id, data, selected }: NodeProps<RoleNode>) {
   )
 }
 
-function BulletNodeView({ id, data, selected }: NodeProps<BulletNode>) {
+function BulletNodeView({ id, data, selected }: NodeProps<FlowNode<BulletNode>>) {
   const connections = useNodeConnections({ handleType: 'target' })
   const { editingId, onUpdateBullet } = useContext(NodeEditContext)
   const editing = editingId === id
@@ -1929,16 +1903,6 @@ function RoleInspector({
       </div>
     </>
   )
-}
-
-function SkillsInspector({
-  node,
-  onUpdate,
-}: {
-  node: SkillsNode
-  onUpdate: (id: string, patch: Partial<SkillsData>) => void
-}) {
-  return <SkillField skills={node.data.skills} onChange={(skills) => onUpdate(node.id, { skills })} />
 }
 
 function EducationInspector({

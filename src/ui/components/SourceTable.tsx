@@ -1,4 +1,4 @@
-import { contactParts, isBulletNode, isEducationNode, isPersonNode, isRoleNode, type CatalogSection, type ResumeEdge, type ResumeNode } from '../model'
+import { contactParts, isBulletNode, isEducationNode, isPersonNode, isRoleNode, type CatalogSection, type ResumeEdge, type ResumeNode } from '../../domain/model'
 
 type SourceTableProps = {
   nodes: ResumeNode[]

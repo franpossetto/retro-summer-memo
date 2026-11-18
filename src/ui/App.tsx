@@ -8,7 +8,7 @@ import {
   type OnNodesChange,
   type XYPosition,
 } from '@xyflow/react'
-import { type Experience } from './experiences'
+import { type Experience } from '../domain/experiences'
 import { GraphCanvas, loadGraphPanelsOpen, type GraphPanelsOpen } from './components/GraphCanvas'
 import { Home, type CvDraft } from './components/Home'
 import { ResumePreview } from './components/ResumePreview'
@@ -42,8 +42,9 @@ import {
   type RoleNode,
   type SkillsData,
   type Snapshot,
-} from './model'
-import { loadDocument, saveDocument } from './storage'
+} from '../domain/model'
+import type { DocumentStore } from '../ports/documentStore'
+import { useDocumentSync } from './useDocumentSync'
 import {
   fonts,
   fontSizes,
@@ -63,9 +64,9 @@ import {
   type LineSpacing,
   type MarginId,
   type PageSize,
-} from './fonts'
-import { type ExperienceLevel } from './experiences'
-import { templates, type TemplateId } from './templates'
+} from '../domain/fonts'
+import { type ExperienceLevel } from '../domain/experiences'
+import { templates, type TemplateId } from '../domain/templates'
 
 type ViewId = 'preview' | 'style' | 'graph' | 'table'
 type Views = Record<ViewId, boolean>
@@ -74,6 +75,26 @@ type DockEdge = 'left' | 'right' | 'top' | 'bottom'
 type WorkspaceLayout = { main: [MainPane, MainPane]; props: DockEdge }
 
 const layoutKey = 'resume.layout.v1'
+
+/** Stand-in that keeps render paths total while no CV exists. Never stored, never shown. */
+const NO_CV: Cv = {
+  id: '',
+  title: '',
+  position: '',
+  company: '',
+  posting: '',
+  summary: '',
+  templateId: 'classic',
+  fontId: 'times',
+  fontSize: 12,
+  lineHeight: 1.15,
+  marginId: 'normal',
+  pageSize: 'letter',
+  enabledSections: [],
+  versions: [],
+  nodes: [],
+  edges: [],
+}
 
 function loadLayout(): WorkspaceLayout {
   const fallback: WorkspaceLayout = { main: ['graph', 'preview'], props: 'right' }
@@ -89,8 +110,18 @@ function loadLayout(): WorkspaceLayout {
   }
 }
 
-export default function App() {
-  const [doc, setDoc] = useState<ResumeDocument>(loadDocument)
+type AppProps = {
+  initialDocument: ResumeDocument
+  store: DocumentStore
+  /** Signed-in user, when the backend has accounts. */
+  account?: { email: string; onSignOut: () => void }
+  /** One-off message shown on open (e.g. data imported from this browser). */
+  notice?: string
+}
+
+export default function App({ initialDocument, store, account, notice }: AppProps) {
+  const { doc, setDoc, status: saveStatus, retry: retrySave } = useDocumentSync(store, initialDocument)
+  const [noticeOpen, setNoticeOpen] = useState(Boolean(notice))
   const [screen, setScreen] = useState<'home' | 'workspace'>('home')
   const [homeSection, setHomeSection] = useState<'projects' | 'personal' | 'experience' | 'library'>('projects')
   const [libraryKey, setLibraryKey] = useState(0)
@@ -113,27 +144,8 @@ export default function App() {
   const workspaceRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    saveDocument(doc)
-  }, [doc])
-
-  useEffect(() => {
     localStorage.setItem(layoutKey, JSON.stringify(layout))
   }, [layout])
-
-  useEffect(() => {
-    setDoc((current) => {
-      const cleaned = current.nodes.filter(
-        (node) => node.type !== 'experience' && node.type !== 'section' && node.type !== 'skills',
-      )
-      if (cleaned.length === current.nodes.length) return current
-      const ids = new Set(cleaned.map((node) => node.id))
-      return {
-        ...current,
-        nodes: cleaned,
-        edges: current.edges.filter((edge) => ids.has(edge.source) && ids.has(edge.target)),
-      }
-    })
-  }, [])
 
   useEffect(() => {
     if (!metadataOpen) return
@@ -175,7 +187,9 @@ export default function App() {
     }
   }, [])
 
-  const cv = activeCv(doc)
+  const openedCv = activeCv(doc)
+  const inWorkspace = screen === 'workspace' && openedCv !== undefined
+  const cv = openedCv ?? NO_CV
   const snapshot = shownSnapshot(cv, selectedVersionId)
   const versionNote = olderVersionNote(cv, selectedVersionId)
   const split = views.preview && views.graph
@@ -709,8 +723,6 @@ export default function App() {
     onAddEducation: addEducation,
     onArrange: arrange,
     onCleanGraph: cleanGraph,
-    visibleViews: { graph: views.graph, table: views.table },
-    onToggleView: (view: 'graph' | 'table') => setViews((current) => ({ ...current, [view]: !current[view] })),
     onUpdateRole: updateRole,
     onUpdateBullet: updateBullet,
     onUpdatePerson: updatePerson,
@@ -848,7 +860,7 @@ export default function App() {
   return (
     <div className="app">
       <Sidebar
-        section={screen === 'workspace' ? 'workspace' : homeSection}
+        section={inWorkspace ? 'workspace' : homeSection}
         onProjects={() => {
           setComposerOpen(false)
           setHomeSection('projects')
@@ -870,9 +882,20 @@ export default function App() {
           setHomeSection('library')
           setScreen('home')
         }}
+        save={saveStatus}
+        onRetrySave={retrySave}
+        account={account}
       />
       <div className="shell-main">
-      {screen === 'workspace' ? (
+      {notice && noticeOpen ? (
+        <div className="app-notice" role="status">
+          <span>{notice}</span>
+          <button type="button" className="view-close" aria-label="Dismiss" onClick={() => setNoticeOpen(false)}>
+            ×
+          </button>
+        </div>
+      ) : null}
+      {inWorkspace ? (
       <header className="topbar">
         <div className="cv-anchor" ref={metadataRef}>
           <button
@@ -986,7 +1009,7 @@ export default function App() {
         </button>
       </header>
       ) : null}
-      {screen === 'home' && homeSection === 'experience' ? (
+      {!inWorkspace && homeSection === 'experience' ? (
         <ExperienceMaster
           bank={doc.bank}
           answers={doc.knowledge}
@@ -994,7 +1017,7 @@ export default function App() {
           onApplyAnswers={applyKnowledge}
           onBank={updateBank}
         />
-      ) : screen === 'home' && homeSection === 'library' ? (
+      ) : !inWorkspace && homeSection === 'library' ? (
         <Library
           key={libraryKey}
           sections={doc.sections}
@@ -1004,7 +1027,7 @@ export default function App() {
           onChange={changeSections}
           onChangeRoles={changeRoleGraphs}
         />
-      ) : screen === 'home' ? (
+      ) : !inWorkspace ? (
         <Home
           cvs={doc.cvs}
           bank={doc.bank}
@@ -1071,6 +1094,7 @@ export default function App() {
             lineHeight={cv.lineHeight}
             marginId={cv.marginId}
             pageSize={cv.pageSize}
+            skillsFormat={cv.skillsFormat ?? 'list'}
             enabledSections={cv.enabledSections}
             sections={doc.sections}
             blocks={snapshot?.blocks ?? []}

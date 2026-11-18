@@ -32,29 +32,14 @@ import {
 } from './model'
 import { defaultFont, defaultFontSize, defaultMargin, isFontId, isFontSize, isLineSpacing, isMarginId, isPageSize } from './fonts'
 import { cloneSeedBank, readExperiences, type Experience } from './experiences'
+import { readApplications, readApplicationStatuses } from './applications'
 import { isTemplateId } from './templates'
 
-export const STORAGE_KEY = 'resume.v1'
-
-export function loadDocument(): ResumeDocument {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    if (!raw) return createSeedDocument()
-    return parseDocument(JSON.parse(raw))
-  } catch {
-    return createSeedDocument()
-  }
-}
-
-export function saveDocument(document: ResumeDocument) {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(document))
-  } catch {
-    // Private mode and quota failures leave the in-memory document usable.
-  }
-}
-
-function parseDocument(value: unknown): ResumeDocument {
+/**
+ * Turns any stored document (current or older formats) into a valid ResumeDocument.
+ * Invalid pieces are dropped rather than failing the whole load.
+ */
+export function parseDocument(value: unknown): ResumeDocument {
   if (!isRecord(value) || !Array.isArray(value.nodes) || !Array.isArray(value.edges)) {
     return createSeedDocument()
   }
@@ -74,6 +59,7 @@ function parseDocument(value: unknown): ResumeDocument {
 
   const { cvs, activeCvId } = resolveCvs(value, nodes, edges)
   const bank = readBank(value.bank)
+  const applicationStatuses = readApplicationStatuses(value.applicationStatuses)
   return {
     nodes,
     edges,
@@ -84,7 +70,19 @@ function parseDocument(value: unknown): ResumeDocument {
     roleGraphs: readRoleGraphs(value.roleGraphs),
     bank,
     knowledge: readKnowledge(value.knowledge, bank),
+    applications: readApplications(value.applications, applicationStatuses),
+    applicationStatuses,
   }
+}
+
+/** A CV graph (`{ nodes, edges }`) with invalid nodes and dangling edges removed. */
+export function parseGraph(value: unknown): { nodes: ResumeNode[]; edges: ResumeEdge[] } {
+  return (isRecord(value) ? readStoredGraph(value) : undefined) ?? { nodes: [], edges: [] }
+}
+
+/** A role template graph: one role node plus its experience nodes. */
+export function parseRoleGraph(id: string, value: unknown): RoleGraph | null {
+  return isRecord(value) ? parseRoleGraphRecord({ ...value, id })[0] ?? null : null
 }
 
 function readProfile(value: unknown, nodes: ResumeNode[]): Profile {
@@ -94,10 +92,10 @@ function readProfile(value: unknown, nodes: ResumeNode[]): Profile {
 }
 
 function resolveCvs(value: Record<string, unknown>, nodes: ResumeNode[], edges: ResumeEdge[]): { cvs: Cv[]; activeCvId: string } {
-  const parsed = Array.isArray(value.cvs) ? value.cvs.flatMap(parseCv) : []
-  const drafts = parsed.length > 0 ? parsed : [legacyCv(value)]
+  // Documents without a `cvs` field predate multiple CVs; an empty array means the user deleted them all.
+  const drafts = Array.isArray(value.cvs) ? value.cvs.flatMap(parseCv) : [legacyCv(value)]
   const requested = typeof value.activeCvId === 'string' ? value.activeCvId : ''
-  const activeCvId = drafts.some((cv) => cv.cv.id === requested) ? requested : drafts[0].cv.id
+  const activeCvId = drafts.some((cv) => cv.cv.id === requested) ? requested : drafts[0]?.cv.id ?? ''
   const cvs = drafts.map(({ cv, graph }) => {
     if (cv.id === activeCvId) return { ...cv, nodes, edges }
     if (graph) return { ...cv, nodes: graph.nodes, edges: graph.edges }
@@ -110,7 +108,7 @@ function cloneGraph(nodes: ResumeNode[]): ResumeNode[] {
   return structuredClone(nodes).map((node) => ({ ...node, selected: false }))
 }
 
-function readStyle(value: Record<string, unknown>) {
+export function readStyle(value: Record<string, unknown>): Pick<Cv, 'fontId' | 'fontSize' | 'lineHeight' | 'marginId' | 'pageSize' | 'skillsFormat'> {
   const templateId = isTemplateId(value.templateId) ? value.templateId : 'classic'
   return {
     fontId: isFontId(value.fontId) ? value.fontId : defaultFont(templateId),
@@ -118,6 +116,7 @@ function readStyle(value: Record<string, unknown>) {
     lineHeight: isLineSpacing(value.lineHeight) ? value.lineHeight : 1.15,
     marginId: isMarginId(value.marginId) ? value.marginId : defaultMargin(templateId),
     pageSize: isPageSize(value.pageSize) ? value.pageSize : 'letter',
+    ...(value.skillsFormat === 'list' || value.skillsFormat === 'comma' ? { skillsFormat: value.skillsFormat } : {}),
   }
 }
 
@@ -224,16 +223,17 @@ function withPersonalData(nodes: ResumeNode[], storedProfile: unknown): ResumeNo
   return [person, ...nodes]
 }
 
-function parseProfile(value: unknown): Profile {
+export function parseProfile(value: unknown): Profile {
   const record = isRecord(value) ? value : {}
   const name = readString(record.name)
-  const base = Array.isArray(record.fields)
-    ? { name, fields: record.fields.flatMap(parseField) }
-    : profileFromLegacy(name, readString(record.email), readString(record.phone), readString(record.location))
+  const fields = Array.isArray(record.fields)
+    ? record.fields.flatMap(parseField)
+    : profileFromLegacy(name, readString(record.email), readString(record.phone), readString(record.location)).fields
   const profile: Profile = {
-    ...base,
-    education: Array.isArray(record.education) ? readEducation(record.education) : base.education ?? [],
-    jobs: Array.isArray(record.jobs) ? readJobs(record.jobs) : base.jobs ?? [],
+    name,
+    fields,
+    education: readEducation(record.education),
+    jobs: readJobs(record.jobs),
   }
   return record.hidden === true ? { ...profile, hidden: true } : profile
 }
@@ -397,10 +397,10 @@ function readKnowledge(value: unknown, bank: Experience[]): KnowledgeAnswer[] {
 
 function readRoleGraphs(value: unknown): RoleGraph[] {
   if (!Array.isArray(value)) return []
-  return value.flatMap(parseRoleGraph)
+  return value.flatMap(parseRoleGraphRecord)
 }
 
-function parseRoleGraph(value: unknown): RoleGraph[] {
+function parseRoleGraphRecord(value: unknown): RoleGraph[] {
   if (!isRecord(value) || typeof value.id !== 'string') return []
   const parsed = Array.isArray(value.nodes) ? value.nodes.map(parseNode).filter((node): node is ResumeNode => node !== null) : []
   const role = parsed.find((node) => node.type === 'role')
@@ -427,7 +427,7 @@ function parseEdge(value: unknown, nodeById: Map<string, ResumeNode>): ResumeEdg
   return { id, source: value.source, target: value.target }
 }
 
-function parseSnapshot(value: unknown): Snapshot | null {
+export function parseSnapshot(value: unknown): Snapshot | null {
   if (value === null || value === undefined) return null
   if (!isRecord(value) || !Array.isArray(value.roles) || !Array.isArray(value.skillGroups)) return null
 
@@ -478,12 +478,12 @@ function parseSnapshot(value: unknown): Snapshot | null {
   }
 }
 
-function readEnabled(value: unknown) {
+export function readEnabled(value: unknown) {
   if (!Array.isArray(value)) return defaultEnabledSections()
   return value.filter((item): item is string => typeof item === 'string')
 }
 
-function readSections(value: unknown): CatalogSection[] {
+export function readSections(value: unknown): CatalogSection[] {
   const parsed = Array.isArray(value) ? value.flatMap(parseSection) : []
   const byId = new Map(parsed.map((section) => [section.id, section]))
   const builtins = defaultSections().map((section) => byId.get(section.id) ?? section)

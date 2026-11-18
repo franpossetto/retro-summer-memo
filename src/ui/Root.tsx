@@ -1,0 +1,200 @@
+import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
+import { readStoredDocument } from '../adapters/local'
+import { openDocument, type OpenedDocument } from '../app/openDocument'
+import { createBackend, type Backend } from '../backend'
+import type { AuthGateway, Session } from '../ports/auth'
+import type { DocumentStore } from '../ports/documentStore'
+import App from './App'
+
+export function Root() {
+  const [backend] = useState(createBackend)
+  if (backend.kind === 'local') return <DocumentGate store={backend.store} />
+  return <AuthGate backend={backend} />
+}
+
+type SupabaseBackend = Extract<Backend, { kind: 'supabase' }>
+
+function AuthGate({ backend }: { backend: SupabaseBackend }) {
+  const [session, setSession] = useState<Session | null | undefined>(undefined)
+
+  useEffect(() => {
+    let active = true
+    backend.auth.current().then((current) => {
+      if (active) setSession(current)
+    })
+    const unsubscribe = backend.auth.onChange((next) => setSession(next))
+    return () => {
+      active = false
+      unsubscribe()
+    }
+  }, [backend])
+
+  if (session === undefined) return <Splash text="Cargando…" />
+  if (!session) return <SignIn auth={backend.auth} devMailbox={backend.devMailbox} />
+  return <SignedIn key={session.userId} backend={backend} session={session} />
+}
+
+function SignedIn({ backend, session }: { backend: SupabaseBackend; session: Session }) {
+  const [store] = useState(() => backend.storeFor(session))
+  return (
+    <DocumentGate
+      store={store}
+      importFromBrowser
+      account={{ email: session.email, onSignOut: () => void backend.auth.signOut() }}
+    />
+  )
+}
+
+type GateState = { status: 'loading' } | { status: 'ready'; opened: OpenedDocument } | { status: 'error'; message: string }
+
+function DocumentGate({
+  store,
+  importFromBrowser = false,
+  account,
+}: {
+  store: DocumentStore
+  importFromBrowser?: boolean
+  account?: { email: string; onSignOut: () => void }
+}) {
+  const [state, setState] = useState<GateState>({ status: 'loading' })
+  const [attempt, setAttempt] = useState(0)
+
+  useEffect(() => {
+    let active = true
+    openDocument(store, importFromBrowser ? () => readStoredDocument() : undefined).then(
+      (opened) => {
+        if (active) setState({ status: 'ready', opened })
+      },
+      (error: unknown) => {
+        if (active) setState({ status: 'error', message: error instanceof Error ? error.message : String(error) })
+      },
+    )
+    return () => {
+      active = false
+    }
+  }, [store, importFromBrowser, attempt])
+
+  if (state.status === 'loading') return <Splash text="Abriendo tus datos…" />
+  if (state.status === 'error') {
+    return (
+      <Splash text={`No se pudieron abrir tus datos (${store.label}): ${state.message}`}>
+        <button
+          type="button"
+          className="button primary"
+          onClick={() => {
+            setState({ status: 'loading' })
+            setAttempt((count) => count + 1)
+          }}
+        >
+          Reintentar
+        </button>
+        {account ? (
+          <button type="button" className="button" onClick={account.onSignOut}>
+            Cerrar sesión
+          </button>
+        ) : null}
+      </Splash>
+    )
+  }
+  const notice =
+    state.opened.created === 'imported' ? 'Importamos a tu cuenta los datos que tenías en este navegador.' : undefined
+  return <App initialDocument={state.opened.document} store={store} account={account} notice={notice} />
+}
+
+function SignIn({ auth, devMailbox }: { auth: AuthGateway; devMailbox: string }) {
+  const [email, setEmail] = useState('')
+  const [sentTo, setSentTo] = useState('')
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  async function sendLink(event: FormEvent) {
+    event.preventDefault()
+    const address = email.trim()
+    if (!address) return
+    setBusy(true)
+    setError('')
+    try {
+      await auth.signInWithEmail(address)
+      setSentTo(address)
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function google() {
+    setError('')
+    try {
+      await auth.signInWithGoogle()
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason))
+    }
+  }
+
+  return (
+    <div className="signin">
+      <div className="signin-card">
+        <h1>Entrar</h1>
+        {sentTo ? (
+          <>
+            <p>
+              Te mandamos un link a <strong>{sentTo}</strong>. Abrilo desde este navegador para entrar.
+            </p>
+            {devMailbox ? (
+              <p className="signin-hint">
+                En desarrollo los mails llegan a{' '}
+                <a href={devMailbox} target="_blank" rel="noreferrer">
+                  Mailpit
+                </a>
+                .
+              </p>
+            ) : null}
+            <button type="button" className="button" onClick={() => setSentTo('')}>
+              Usar otro email
+            </button>
+          </>
+        ) : (
+          <>
+            {auth.providers.google ? (
+              <button type="button" className="button signin-google" onClick={() => void google()}>
+                Continuar con Google
+              </button>
+            ) : null}
+            <form className="signin-form" onSubmit={(event) => void sendLink(event)}>
+              <label className="field">
+                <span>Email</span>
+                <input
+                  type="email"
+                  autoComplete="email"
+                  required
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                />
+              </label>
+              <button type="submit" className="button primary" disabled={busy || !email.trim()}>
+                {busy ? 'Enviando…' : 'Mandarme un link'}
+              </button>
+            </form>
+          </>
+        )}
+        {error ? (
+          <p className="signin-error" role="alert">
+            {error}
+          </p>
+        ) : null}
+      </div>
+    </div>
+  )
+}
+
+function Splash({ text, children }: { text: string; children?: ReactNode }) {
+  return (
+    <div className="signin">
+      <div className="signin-card">
+        <p>{text}</p>
+        {children ? <div className="signin-actions">{children}</div> : null}
+      </div>
+    </div>
+  )
+}

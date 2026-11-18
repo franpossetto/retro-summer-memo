@@ -4,9 +4,9 @@ import {
   filterExperiencesBank,
   type Experience,
   type ExperienceLevel,
-} from '../experiences'
-import type { KnowledgeAnswer } from '../model'
-import { testQuestions, type TestQuestion } from '../testQuestions'
+} from '../../domain/experiences'
+import type { KnowledgeAnswer } from '../../domain/model'
+import { testQuestions, type TestQuestion } from '../../domain/testQuestions'
 
 type ExperienceMasterProps = {
   bank: Experience[]

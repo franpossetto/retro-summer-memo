@@ -1,7 +1,7 @@
 import { cloneElement, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactElement, type ReactNode } from 'react'
-import type { CatalogSection, EducationEntry, Snapshot, SnapshotBlock } from '../model'
-import { pageSpec, type FontId, type FontSize, type LineSpacing, type MarginId, type PageSize } from '../fonts'
-import type { TemplateId } from '../templates'
+import type { CatalogSection, EducationEntry, Snapshot, SnapshotBlock } from '../../domain/model'
+import { pageSpec, type FontId, type FontSize, type LineSpacing, type MarginId, type PageSize } from '../../domain/fonts'
+import type { TemplateId } from '../../domain/templates'
 
 type ResumePreviewProps = {
   snapshot: Snapshot | null

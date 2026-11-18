@@ -1,4 +1,4 @@
-import type { Edge, Node } from '@xyflow/react'
+import { defaultApplicationStatuses, type Application, type ApplicationStatus } from './applications'
 import { experienceCatalog } from './catalog'
 import { cloneSeedBank, type Experience } from './experiences'
 import type { FontId, FontSize, LineSpacing, MarginId, PageSize } from './fonts'
@@ -72,18 +72,39 @@ export type SkillsData = {
 
 export type ExperienceSectionData = Record<string, never>
 
-export type PersonNode = Node<Profile, 'person'>
-export type RoleNode = Node<RoleData, 'role'>
-export type BulletNode = Node<BulletData, 'bullet'>
-export type SkillsNode = Node<SkillsData, 'skills'>
-export type ExperienceSectionNode = Node<ExperienceSectionData, 'experience'>
-export type EducationNode = Node<EducationData, 'education'>
+/**
+ * A node of a CV graph. Structurally compatible with React Flow's `Node`, but owned by the
+ * domain so the engine runs without the canvas library (server, MCP, tests).
+ */
+export type GraphNode<TData, TType extends string> = {
+  id: string
+  type: TType
+  position: { x: number; y: number }
+  data: TData
+  /** UI state; never persisted. */
+  selected?: boolean
+}
+
+export type GraphEdge = {
+  id: string
+  source: string
+  target: string
+  sourceHandle?: string | null
+  targetHandle?: string | null
+}
+
+export type PersonNode = GraphNode<Profile, 'person'>
+export type RoleNode = GraphNode<RoleData, 'role'>
+export type BulletNode = GraphNode<BulletData, 'bullet'>
+export type SkillsNode = GraphNode<SkillsData, 'skills'>
+export type ExperienceSectionNode = GraphNode<ExperienceSectionData, 'experience'>
+export type EducationNode = GraphNode<EducationData, 'education'>
 export type SectionData = {
   sectionId: string
 }
-export type SectionNode = Node<SectionData, 'section'>
+export type SectionNode = GraphNode<SectionData, 'section'>
 export type ResumeNode = PersonNode | RoleNode | BulletNode | SkillsNode | ExperienceSectionNode | EducationNode | SectionNode
-export type ResumeEdge = Edge
+export type ResumeEdge = GraphEdge
 
 export type RoleGraph = {
   id: string
@@ -186,10 +207,14 @@ export type ResumeDocument = {
   /** Editable experience bank (seeded from shipped presets). */
   bank: Experience[]
   knowledge: KnowledgeAnswer[]
+  /** Graph of the CV open in the workspace (`activeCvId`); other CVs keep theirs in `cvs[].nodes`. */
   nodes: ResumeNode[]
   edges: ResumeEdge[]
   cvs: Cv[]
   activeCvId: string
+  applications: Application[]
+  /** Pipeline steps, in order. */
+  applicationStatuses: ApplicationStatus[]
 }
 
 const builtinSectionDefs: { id: string; name: string }[] = [
@@ -213,7 +238,8 @@ export function defaultEnabledSections() {
   return ['personal', 'experience', 'education', 'skills']
 }
 
-export function activeCv(document: ResumeDocument): Cv {
+/** The CV open in the workspace; undefined once every CV has been deleted. */
+export function activeCv(document: ResumeDocument): Cv | undefined {
   return document.cvs.find((cv) => cv.id === document.activeCvId) ?? document.cvs[0]
 }
 
@@ -447,6 +473,8 @@ export function createSeedDocument(): ResumeDocument {
     roleGraphs: [],
     bank: cloneSeedBank(),
     knowledge: [],
+    applications: [],
+    applicationStatuses: defaultApplicationStatuses(),
     activeCvId: 'seed-cv',
     nodes,
     edges,

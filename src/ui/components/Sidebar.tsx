@@ -1,12 +1,17 @@
+import type { SaveStatus } from '../useDocumentSync'
+
 type SidebarProps = {
   section: 'projects' | 'personal' | 'experience' | 'library' | 'workspace'
   onProjects: () => void
   onPersonal: () => void
   onExperience: () => void
   onLibrary: () => void
+  save: SaveStatus
+  onRetrySave: () => void
+  account?: { email: string; onSignOut: () => void }
 }
 
-export function Sidebar({ section, onProjects, onPersonal, onExperience, onLibrary }: SidebarProps) {
+export function Sidebar({ section, onProjects, onPersonal, onExperience, onLibrary, save, onRetrySave, account }: SidebarProps) {
   return (
     <nav className="sidebar" aria-label="Sections">
       <button
@@ -49,7 +54,43 @@ export function Sidebar({ section, onProjects, onPersonal, onExperience, onLibra
       >
         <LibraryIcon />
       </button>
+      <div className="sidebar-foot">
+        <SaveIndicator save={save} onRetry={onRetrySave} />
+        {account ? (
+          <button
+            type="button"
+            className="sidebar-item"
+            aria-label={`Cerrar sesión (${account.email})`}
+            title={`Cerrar sesión (${account.email})`}
+            onClick={account.onSignOut}
+          >
+            <SignOutIcon />
+          </button>
+        ) : null}
+      </div>
     </nav>
+  )
+}
+
+function SaveIndicator({ save, onRetry }: { save: SaveStatus; onRetry: () => void }) {
+  if (save.state === 'error') {
+    return (
+      <button
+        type="button"
+        className="save-indicator is-error"
+        title={`No se pudo guardar: ${save.message}. Click para reintentar.`}
+        aria-label="No se pudo guardar. Reintentar"
+        onClick={onRetry}
+      >
+        <span className="save-dot" aria-hidden="true" />
+      </button>
+    )
+  }
+  const label = save.state === 'saving' ? 'Guardando…' : 'Guardado'
+  return (
+    <span className={`save-indicator is-${save.state}`} role="status" title={label} aria-label={label}>
+      <span className="save-dot" aria-hidden="true" />
+    </span>
   )
 }
 
@@ -88,6 +129,15 @@ function PersonalIcon() {
     <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
       <circle cx="9" cy="5.5" r="2.5" fill="none" stroke="currentColor" strokeWidth="1.5" />
       <path d="M3.5 15.5c.6-2.8 2.8-4.2 5.5-4.2s4.9 1.4 5.5 4.2" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
+  )
+}
+
+function SignOutIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
+      <path d="M7 3H3.5v12H7" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M11 5.5 14.5 9 11 12.5M14.5 9H7" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   )
 }

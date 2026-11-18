@@ -15,7 +15,7 @@ import {
   type OnNodesChange,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
-import { filterExperiencesBank, type Experience } from '../experiences'
+import { filterExperiencesBank, type Experience } from '../../domain/experiences'
 import {
   isRoleNode,
   personalRoleOptions,
@@ -29,7 +29,8 @@ import {
   type RoleData,
   type RoleGraph,
   type RoleNode,
-} from '../model'
+} from '../../domain/model'
+import type { FlowNode } from '../flow'
 
 type RoleGraphsProps = {
   graphs: RoleGraph[]
@@ -377,7 +378,7 @@ function RoleCatalog({
   )
 }
 
-function RoleNodeView({ data, selected }: NodeProps<RoleNode>) {
+function RoleNodeView({ data, selected }: NodeProps<FlowNode<RoleNode>>) {
   return (
     <div className={selected ? 'flow-node is-selected' : 'flow-node'}>
       <div className="node-kicker">Role</div>
@@ -388,7 +389,7 @@ function RoleNodeView({ data, selected }: NodeProps<RoleNode>) {
   )
 }
 
-function BulletNodeView({ data, selected }: NodeProps<BulletNode>) {
+function BulletNodeView({ data, selected }: NodeProps<FlowNode<BulletNode>>) {
   return (
     <div className={selected ? 'flow-node is-selected' : 'flow-node'}>
       <Handle type="target" position={Position.Left} id="in" />

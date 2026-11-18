@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import type { Experience } from '../experiences'
-import type { CatalogSection, Job, RoleGraph } from '../model'
+import type { Experience } from '../../domain/experiences'
+import type { CatalogSection, Job, RoleGraph } from '../../domain/model'
 import { RoleGraphs } from './RoleGraphs'
 
 type LibraryProps = {
