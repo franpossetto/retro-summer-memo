@@ -44,11 +44,16 @@ by the app: Edge Functions (the MCP) receive it from Supabase itself.
 ```bash
 npx supabase login                                   # once, opens the browser
 npx supabase link --project-ref attrxmtjyjzfgopfrgnk
-npx supabase db push                                 # applies supabase/migrations
+npx supabase db push --remote                        # applies supabase/migrations (without
+                                                     # --remote, CLI 3.x targets the local stack)
 ```
 
-In the dashboard, Authentication → URL Configuration: add `http://localhost:4173` (preview) and,
-later, the production URL to the redirect URLs, or sign-in links bounce to the Site URL.
+Redirect URLs (Authentication → URL Configuration) must include every origin the app is served
+from, or sign-in links bounce to the Site URL. `http://localhost:4173` (preview) is set; add the
+production URL when there is one.
+
+Do not `supabase config push` this repo's `config.toml` to the cloud: it holds local-dev values
+(email confirmations and MFA off). Run `supabase config diff` first and push only what you mean to.
 
 ## Checks
 
