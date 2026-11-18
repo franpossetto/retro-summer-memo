@@ -1,4 +1,5 @@
 import data from './experiences.json'
+import { readExtra, withExtra, type Extra } from './extra'
 
 export type ExperienceLevel = 0 | 1 | 2
 
@@ -8,6 +9,8 @@ export type Experience = {
   text: string
   skills: string[]
   aliases: string[]
+  /** Anything else: dates, metrics, links… */
+  extra?: Extra
 }
 
 export const experienceLevels: {
@@ -164,13 +167,13 @@ export function readExperiences(value: unknown): Experience[] {
     const text = readString(entry.text)
     if (!text) continue
     seen.add(entry.id)
-    items.push({
+    items.push(withExtra({
       id: entry.id,
       category: readString(entry.category) || 'Custom',
       text,
       skills: readStrings(entry.skills),
       aliases: readStrings(entry.aliases),
-    })
+    }, readExtra(entry, ['id', 'category', 'text', 'skills', 'aliases'])))
   }
   return items
 }

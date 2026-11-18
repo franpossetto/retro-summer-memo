@@ -36,14 +36,14 @@ export type Tables = Record<TableName, Row[]>
 /** Columns read back from each table (user_id is implied: RLS returns only the user's rows). */
 export const COLUMNS: Record<TableName, string> = {
   profiles: 'id,data',
-  experiences: 'id,category,text,skills,aliases,level,sort',
-  sections: 'id,name,description,active,built_in,sort',
+  experiences: 'id,category,text,skills,aliases,level,sort,extra',
+  sections: 'id,name,description,active,built_in,sort,extra',
   role_templates: 'id,graph,sort',
-  cvs: 'id,title,target_role,target_company,posting,summary,style,enabled_sections,graph,sort',
+  cvs: 'id,title,target_role,target_company,posting,summary,style,enabled_sections,graph,sort,extra',
   cv_versions: 'id,cv_id,created_at,snapshot,sort',
-  application_statuses: 'id,name,color,kind,sort',
-  applications: 'id,company,title,url,posting_key,posting,location,applied_on,status_id,attachment,created_at,updated_at',
-  application_events: 'id,application_id,at,kind,status_id,text',
+  application_statuses: 'id,name,color,kind,sort,extra',
+  applications: 'id,company,title,url,posting_key,posting,location,applied_on,status_id,attachment,created_at,updated_at,extra',
+  application_events: 'id,application_id,at,kind,status_id,text,extra',
 }
 
 /** Built versions never change once written, so the diff only looks at which ids exist. */
@@ -77,6 +77,7 @@ export function toTables(document: ResumeDocument): Tables {
       aliases: item.aliases,
       level: levels.get(item.id) ?? null,
       sort,
+      extra: item.extra ?? {},
     })),
     sections: document.sections.map((section, sort) => ({
       id: section.id,
@@ -85,6 +86,7 @@ export function toTables(document: ResumeDocument): Tables {
       active: section.active,
       built_in: section.builtIn,
       sort,
+      extra: section.extra ?? {},
     })),
     role_templates: document.roleGraphs.map((graph, sort) => ({
       id: graph.id,
@@ -99,6 +101,7 @@ export function toTables(document: ResumeDocument): Tables {
       color: status.color,
       kind: status.kind,
       sort,
+      extra: status.extra ?? {},
     })),
     applications: document.applications.map(applicationRow),
     application_events: document.applications.flatMap((application) =>
@@ -109,6 +112,7 @@ export function toTables(document: ResumeDocument): Tables {
         kind: event.kind,
         status_id: event.statusId,
         text: event.text,
+        extra: event.extra ?? {},
       })),
     ),
   }
@@ -136,6 +140,7 @@ function cvRow(cv: Cv, document: ResumeDocument, sort: number): Row {
     enabled_sections: cv.enabledSections,
     graph: graphJson(live ? document.nodes : cv.nodes, live ? document.edges : cv.edges),
     sort,
+    extra: cv.extra ?? {},
   }
 }
 
@@ -157,6 +162,7 @@ function applicationRow(application: Application): Row {
     attachment: application.attachment,
     created_at: application.createdAt || EPOCH,
     updated_at: application.updatedAt || application.createdAt || EPOCH,
+    extra: application.extra ?? {},
   }
 }
 
@@ -185,7 +191,9 @@ export function fromTables(tables: Tables, previous?: ResumeDocument): ResumeDoc
   const profile = parseProfile(tables.profiles.find((row) => row.id === 'me')?.data)
 
   const bankRows = bySort(tables.experiences)
-  const bank = readExperiences(bankRows)
+  const bank = readExperiences(
+    bankRows.map((row) => ({ id: row.id, category: row.category, text: row.text, skills: row.skills, aliases: row.aliases, extra: row.extra })),
+  )
   const inBank = new Set(bank.map((item) => item.id))
   const knowledge: KnowledgeAnswer[] = bankRows.flatMap((row) => {
     const level = row.level
@@ -193,7 +201,7 @@ export function fromTables(tables: Tables, previous?: ResumeDocument): ResumeDoc
   })
 
   const sections = readSections(
-    bySort(tables.sections).map((row) => ({ id: row.id, name: row.name, description: row.description, active: row.active })),
+    bySort(tables.sections).map((row) => ({ id: row.id, name: row.name, description: row.description, active: row.active, extra: row.extra })),
   )
   const roleGraphs = bySort(tables.role_templates).flatMap((row) => parseRoleGraph(row.id, row.graph) ?? [])
 
@@ -218,6 +226,7 @@ export function fromTables(tables: Tables, previous?: ResumeDocument): ResumeDoc
       versions,
       nodes: graph.nodes,
       edges: graph.edges,
+      ...(isRecord(row.extra) && Object.keys(row.extra).length > 0 ? { extra: row.extra } : {}),
     }
   })
 
@@ -230,15 +239,10 @@ export function fromTables(tables: Tables, previous?: ResumeDocument): ResumeDoc
     canonical(graphJson(previous.nodes, previous.edges)) === canonical(graphJson(active.nodes, active.edges))
 
   const pipeline: ApplicationStatus[] = readApplicationStatuses(
-    bySort(tables.application_statuses).map((row) => ({ id: row.id, name: row.name, color: row.color, kind: row.kind })),
+    bySort(tables.application_statuses).map((row) => ({ id: row.id, name: row.name, color: row.color, kind: row.kind, extra: row.extra })),
   )
   const eventsByApplication = groupBy(
-    [...tables.application_events].sort(
-      (left, right) =>
-        readString(left.at).localeCompare(readString(right.at)) ||
-        (left.kind === right.kind ? 0 : left.kind === 'status' ? -1 : 1) ||
-        left.id.localeCompare(right.id),
-    ),
+    tables.application_events,
     (row) => String(row.application_id),
   )
   const applications = readApplications(
@@ -256,12 +260,14 @@ export function fromTables(tables: Tables, previous?: ResumeDocument): ResumeDoc
         attachment: row.attachment,
         createdAt: row.created_at,
         updatedAt: row.updated_at,
+        extra: row.extra,
         events: (eventsByApplication.get(row.id) ?? []).map((event) => ({
           id: event.id,
           at: event.at,
           kind: event.kind,
           statusId: event.status_id,
           text: event.text,
+          extra: event.extra,
         })),
       })),
     pipeline,

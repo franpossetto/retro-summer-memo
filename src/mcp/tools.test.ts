@@ -118,6 +118,28 @@ describe('MCP tools', () => {
       expect(stored.applicationStatuses.find((status) => status.id === 'call-con-el-ceo')).toMatchObject({ name: 'Call con el ceo' })
     })
 
+    it('keeps any extra data the assistant adds to an entity', async () => {
+      const { call, load, document } = await setup()
+      const globex = document.applications.find((application) => application.company === 'Globex')!
+      await call('update_document', {
+        operations: [
+          { op: 'add', path: `/applications/[id=${globex.id}]/extra`, value: { salary: '85k EUR', modality: 'remoto' } },
+          { op: 'add', path: `/applications/[id=${globex.id}]/recruiter`, value: 'Laura' },
+          {
+            op: 'add',
+            path: `/applications/[id=${globex.id}]/events/-`,
+            value: { kind: 'interview', at: '2099-03-20T10:00:00.000Z', statusId: globex.statusId, text: 'Challenge técnico' },
+          },
+          { op: 'add', path: '/profile/jobs/0/roles/0/extra', value: { stack: ['Node.js', 'Azure'] } },
+        ],
+      })
+      const stored = await load()
+      const application = stored.applications.find((item) => item.id === globex.id)!
+      expect(application.extra).toEqual({ salary: '85k EUR', modality: 'remoto', recruiter: 'Laura' })
+      expect(application.events.at(-1)).toMatchObject({ kind: 'interview', text: 'Challenge técnico' })
+      expect(stored.profile.jobs[0].roles[0].extra).toEqual({ stack: ['Node.js', 'Azure'] })
+    })
+
     it('reports items the rules reject instead of saving them half-way', async () => {
       const { call } = await setup()
       const result = await call('update_document', { operations: [{ op: 'add', path: '/bank/-', value: { category: 'Empty' } }], dry_run: true })
@@ -131,7 +153,9 @@ describe('MCP tools', () => {
     const moved = await call('move_application', { id: acme.id, status: 'Call con el CEO', note: 'El 20/3 a las 10' })
     expect(moved).toMatchObject({ status: 'Call con el CEO', created_status: 'Call con el CEO' })
     const stored = (await load()).applications.find((item) => item.id === acme.id)!
-    expect(stored.events.at(-1)).toMatchObject({ kind: 'note', text: 'El 20/3 a las 10' })
+    expect(stored.events.some((event) => event.kind === 'note' && event.text === 'El 20/3 a las 10')).toBe(true)
+    // What is scheduled for later stays after it in the history.
+    expect(stored.events.at(-1)).toMatchObject({ kind: 'interview', extra: { place: 'Zoom' } })
   })
 
   it('builds a CV for an application from bank items and pins the version sent', async () => {

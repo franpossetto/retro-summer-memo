@@ -159,11 +159,12 @@ describe('application lifecycle', () => {
 
   it('reads stored applications defensively', () => {
     const [application] = readApplications(
-      [{ id: 'a', company: 'Acme', statusId: 'gone', url: 'https://linkedin.com/jobs/view/7', events: [{ id: 'e', kind: 'bogus' }] }, { nope: true }],
+      [{ id: 'a', company: 'Acme', statusId: 'gone', url: 'https://linkedin.com/jobs/view/7', events: [{ id: 'e' }], salary: '90k' }, { nope: true }],
       statuses,
     )
     // Unknown statuses are kept (withReferencedStatuses adds them to the pipeline), never rewritten.
-    expect(application).toMatchObject({ id: 'a', statusId: 'gone', postingKey: 'linkedin:7', events: [], attachment: null })
+    // Events need a kind (any kind); unknown properties are kept under extra.
+    expect(application).toMatchObject({ id: 'a', statusId: 'gone', postingKey: 'linkedin:7', events: [], attachment: null, extra: { salary: '90k' } })
   })
 
   it('adds statuses that applications use but the pipeline does not list', () => {

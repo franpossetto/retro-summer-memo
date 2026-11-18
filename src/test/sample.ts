@@ -10,13 +10,18 @@ import {
   type RoleNode,
 } from '../domain/model'
 
-/** A document exercising every stored shape: two CVs, versions, knowledge, applications with history. */
+/**
+ * A document exercising every stored shape: two CVs, versions, knowledge, applications with history,
+ * custom statuses and event kinds, and extra data on every kind of entity.
+ */
 export function sampleDocument(): ResumeDocument {
   const seed = createSeedDocument()
   const profile = {
     ...seed.profile,
     name: 'Ada Lovelace',
     fields: seed.profile.fields.map((field) => (field.id === 'email' ? { ...field, value: 'ada@example.com' } : field)),
+    jobs: [{ id: 'job-1', company: 'Analytical Engines', roles: [{ id: 'job-1-r1', title: 'Engineer', location: 'London', start: '1842', end: '1843', extra: { stack: ['Notes'] } }] }],
+    extra: { headline: 'First programmer' },
   }
   const person = { ...seed.nodes[0], data: profile } as ResumeNode
   const role: RoleNode = {
@@ -68,7 +73,8 @@ export function sampleDocument(): ResumeDocument {
 
   const statuses: ApplicationStatus[] = [
     ...defaultApplicationStatuses(),
-    { id: 'take-home', name: 'Take home', color: '#123456', kind: 'active' },
+    { id: 'take-home', name: 'Take home', color: '#123456', kind: 'active', extra: { description: 'Ejercicio en casa' } },
+    { id: 'on-hold', name: 'En pausa', color: '#654321', kind: 'paused' },
   ]
   const acme = moveApplication(
     createApplication(
@@ -88,19 +94,29 @@ export function sampleDocument(): ResumeDocument {
     new Date('2026-03-05T10:00:00.000Z'),
   )
   const globex = createApplication({ company: 'Globex', title: 'Frontend Dev' }, statuses, new Date('2026-04-01T10:00:00.000Z'))
+  const acmeWithExtras = {
+    ...acme,
+    extra: { salary: '90k', recruiter: 'Babbage' },
+    events: [
+      ...acme.events,
+      { id: 'acme-interview', at: '2099-01-10T10:00:00.000Z', kind: 'interview', statusId: 'hr-call', text: 'Entrevista con el CTO', extra: { place: 'Zoom' } },
+    ],
+  }
 
   return {
     ...seed,
     profile,
     nodes,
     edges,
-    cvs: [mainCv, backendCv],
+    cvs: [mainCv, { ...backendCv, extra: { language: 'en' } }],
     activeCvId: mainCv.id,
+    bank: seed.bank.map((item, index) => (index === 0 ? { ...item, extra: { metric: '-40% latency' } } : item)),
+    sections: seed.sections.map((section) => (section.id === 'experience' ? { ...section, name: 'Experiencia laboral', extra: { order: 1 } } : section)),
     knowledge: [
       { id: 'rest-api', level: 2 },
       { id: 'sql', level: 0 },
     ],
-    applications: [acme, globex],
+    applications: [acmeWithExtras, globex],
     applicationStatuses: statuses,
   }
 }

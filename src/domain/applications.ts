@@ -3,7 +3,11 @@
  * (custom statuses) each one goes through. Pure functions only — no I/O.
  */
 
-export type ApplicationStatusKind = 'active' | 'offer' | 'rejected' | 'withdrawn'
+import { readExtra, withExtra, type Extra } from './extra'
+
+/** Kinds the app understands; any other string is accepted and counts as an open step. */
+export type KnownStatusKind = 'active' | 'offer' | 'rejected' | 'withdrawn'
+export type ApplicationStatusKind = KnownStatusKind | (string & {})
 
 export type ApplicationStatus = {
   id: string
@@ -11,6 +15,7 @@ export type ApplicationStatus = {
   color: string
   /** Lets filters tell open processes from finished ones, whatever the user calls them. */
   kind: ApplicationStatusKind
+  extra?: Extra
 }
 
 export type ApplicationAttachment =
@@ -21,10 +26,15 @@ export type ApplicationEvent = {
   id: string
   /** ISO timestamp. */
   at: string
-  /** `status`: the application moved into `statusId`. `note`: something added while in `statusId`. */
-  kind: 'status' | 'note'
+  /**
+   * `status`: the application moved into `statusId`. `note`: something added while in `statusId`.
+   * Any other kind is accepted too (interview, call, email, task…); with `at` in the future it is
+   * something coming up.
+   */
+  kind: 'status' | 'note' | (string & {})
   statusId: string
   text: string
+  extra?: Extra
 }
 
 export type Application = {
@@ -44,6 +54,8 @@ export type Application = {
   /** ISO timestamps. */
   createdAt: string
   updatedAt: string
+  /** Anything else: salary, recruiter, modality, source… */
+  extra?: Extra
 }
 
 export type NewApplication = {
@@ -116,10 +128,27 @@ export function createApplication(
 export function moveApplication(application: Application, statusId: string, note = '', now: Date = new Date()): Application {
   if (application.statusId === statusId && !note.trim()) return application
   const at = now.toISOString()
-  const events = [...application.events]
-  if (application.statusId !== statusId) events.push({ id: crypto.randomUUID(), at, kind: 'status', statusId, text: '' })
-  if (note.trim()) events.push({ id: crypto.randomUUID(), at, kind: 'note', statusId, text: note.trim() })
-  return { ...application, statusId, events, updatedAt: at }
+  const added: ApplicationEvent[] = []
+  if (application.statusId !== statusId) added.push({ id: crypto.randomUUID(), at, kind: 'status', statusId, text: '' })
+  if (note.trim()) added.push({ id: crypto.randomUUID(), at, kind: 'note', statusId, text: note.trim() })
+  return { ...application, statusId, events: withEvents(application.events, added), updatedAt: at }
+}
+
+/**
+ * History order: by date; at the same moment a status change comes before what happened in it;
+ * then by id so every store returns the same order.
+ */
+export function compareEvents(left: ApplicationEvent, right: ApplicationEvent): number {
+  return (
+    left.at.localeCompare(right.at) ||
+    (left.kind === right.kind ? 0 : left.kind === 'status' ? -1 : right.kind === 'status' ? 1 : 0) ||
+    left.id.localeCompare(right.id)
+  )
+}
+
+/** `events` plus `added`, kept in history order (things scheduled later stay after them). */
+function withEvents(events: ApplicationEvent[], added: ApplicationEvent[]): ApplicationEvent[] {
+  return [...events, ...added].sort(compareEvents)
 }
 
 /** Adds a note to the step the application is currently in. */
@@ -129,7 +158,7 @@ export function addApplicationNote(application: Application, text: string, now: 
   const at = now.toISOString()
   return {
     ...application,
-    events: [...application.events, { id: crypto.randomUUID(), at, kind: 'note', statusId: application.statusId, text: note }],
+    events: withEvents(application.events, [{ id: crypto.randomUUID(), at, kind: 'note', statusId: application.statusId, text: note }]),
     updatedAt: at,
   }
 }
@@ -417,12 +446,12 @@ export function readApplicationStatuses(value: unknown): ApplicationStatus[] {
   const statuses = value.flatMap((entry): ApplicationStatus[] => {
     if (!isRecord(entry) || typeof entry.id !== 'string' || !entry.id || seen.has(entry.id)) return []
     seen.add(entry.id)
-    return [{
+    return [withExtra({
       id: entry.id,
       name: readString(entry.name) || 'Estado',
       color: /^#[0-9a-f]{6}$/i.test(readString(entry.color)) ? readString(entry.color) : '#6e7781',
-      kind: isStatusKind(entry.kind) ? entry.kind : 'active',
-    }]
+      kind: readString(entry.kind).trim() || 'active',
+    }, readExtra(entry, statusKeys))]
   })
   return statuses.length > 0 ? statuses : defaultApplicationStatuses()
 }
@@ -438,7 +467,7 @@ export function readApplications(value: unknown, statuses: ApplicationStatus[]):
     // A status the pipeline does not list yet is kept: withReferencedStatuses adds it.
     const statusId = readString(entry.statusId).trim() || fallback
     const createdAt = readString(entry.createdAt)
-    return [{
+    return [withExtra({
       id: entry.id,
       company: readString(entry.company),
       title: readString(entry.title),
@@ -449,12 +478,18 @@ export function readApplications(value: unknown, statuses: ApplicationStatus[]):
       appliedOn: /^\d{4}-\d{2}-\d{2}$/.test(readString(entry.appliedOn)) ? readString(entry.appliedOn) : '',
       statusId,
       attachment: readAttachment(entry.attachment),
-      events: Array.isArray(entry.events) ? entry.events.flatMap(readEvent) : [],
+      events: Array.isArray(entry.events) ? entry.events.flatMap(readEvent).sort(compareEvents) : [],
       createdAt,
       updatedAt: readString(entry.updatedAt) || createdAt,
-    }]
+    }, readExtra(entry, applicationKeys))]
   })
 }
+
+const statusKeys = ['id', 'name', 'color', 'kind']
+const applicationKeys = [
+  'id', 'company', 'title', 'url', 'postingKey', 'posting', 'location', 'appliedOn', 'statusId', 'attachment', 'events', 'createdAt', 'updatedAt',
+]
+const eventKeys = ['id', 'at', 'kind', 'statusId', 'text']
 
 export function readAttachment(value: unknown): ApplicationAttachment | null {
   if (!isRecord(value)) return null
@@ -469,12 +504,9 @@ export function readAttachment(value: unknown): ApplicationAttachment | null {
 
 function readEvent(value: unknown): ApplicationEvent[] {
   if (!isRecord(value) || typeof value.id !== 'string') return []
-  if (value.kind !== 'status' && value.kind !== 'note') return []
-  return [{ id: value.id, at: readString(value.at), kind: value.kind, statusId: readString(value.statusId), text: readString(value.text) }]
-}
-
-function isStatusKind(value: unknown): value is ApplicationStatusKind {
-  return value === 'active' || value === 'offer' || value === 'rejected' || value === 'withdrawn'
+  const kind = readString(value.kind).trim()
+  if (!kind) return []
+  return [withExtra({ id: value.id, at: readString(value.at), kind, statusId: readString(value.statusId), text: readString(value.text) }, readExtra(value, eventKeys))]
 }
 
 function readString(value: unknown): string {

@@ -31,7 +31,8 @@ import {
   type TextEntry,
 } from './model'
 import { defaultFont, defaultFontSize, defaultMargin, isFontId, isFontSize, isLineSpacing, isMarginId, isPageSize } from './fonts'
-import { cloneSeedBank, readExperiences, type Experience } from './experiences'
+import { readExperiences, type Experience } from './experiences'
+import { readExtra, withExtra } from './extra'
 import { readApplications, readApplicationStatuses, withReferencedStatuses } from './applications'
 import { isTemplateId } from './templates'
 
@@ -144,13 +145,18 @@ function legacyCv(value: Record<string, unknown>): DraftCv {
   }
 }
 
+const cvKeys = [
+  'id', 'title', 'position', 'company', 'posting', 'summary', 'templateId', 'fontId', 'fontSize', 'lineHeight',
+  'marginId', 'pageSize', 'skillsFormat', 'enabledSections', 'versions', 'nodes', 'edges', 'graph',
+]
+
 function parseCv(value: unknown): DraftCv[] {
   if (!isRecord(value) || typeof value.id !== 'string') return []
   const versions = Array.isArray(value.versions) ? value.versions.flatMap(parseVersion) : []
   return [{
-    cv: {
+    cv: withExtra({
       id: value.id,
-      title: readString(value.title).trim() || 'Untitled',
+      title: readString(value.title).trim() || 'Sin título',
       position: readString(value.position),
       company: readString(value.company),
       posting: readString(value.posting),
@@ -159,7 +165,7 @@ function parseCv(value: unknown): DraftCv[] {
       ...readStyle(value),
       enabledSections: readEnabled(value.enabledSections),
       versions,
-    },
+    }, readExtra(value, cvKeys)),
     graph: readStoredGraph(value),
   }]
 }
@@ -230,12 +236,12 @@ export function parseProfile(value: unknown): Profile {
   const fields = Array.isArray(record.fields)
     ? record.fields.flatMap(parseField)
     : profileFromLegacy(name, readString(record.email), readString(record.phone), readString(record.location)).fields
-  const profile: Profile = {
+  const profile: Profile = withExtra({
     name,
     fields,
     education: readEducation(record.education),
     jobs: readJobs(record.jobs),
-  }
+  }, readExtra(record, ['name', 'fields', 'education', 'jobs', 'hidden', 'email', 'phone', 'location']))
   return record.hidden === true ? { ...profile, hidden: true } : profile
 }
 
@@ -244,33 +250,33 @@ function readJobs(value: unknown): Job[] {
   return value.flatMap((entry) => {
     if (!isRecord(entry) || typeof entry.id !== 'string') return []
     const roles = Array.isArray(entry.roles) ? entry.roles.flatMap(parseJobRole) : []
-    return [{
+    return [withExtra({
       id: entry.id,
       company: readString(entry.company),
       roles: roles.length > 0 ? roles : [{ id: crypto.randomUUID(), title: '', location: '', start: '', end: '' }],
-    }]
+    }, readExtra(entry, ['id', 'company', 'roles']))]
   })
 }
 
 function parseJobRole(value: unknown): JobRole[] {
   if (!isRecord(value) || typeof value.id !== 'string') return []
-  return [{
+  return [withExtra({
     id: value.id,
     title: readString(value.title),
     location: readString(value.location),
     start: readString(value.start),
     end: readString(value.end),
-  }]
+  }, readExtra(value, ['id', 'title', 'location', 'start', 'end']))]
 }
 
 function parseField(value: unknown): ProfileField[] {
   if (!isRecord(value) || typeof value.id !== 'string') return []
-  return [{
+  return [withExtra({
     id: value.id,
     label: readString(value.label),
     value: readString(value.value),
     kind: readFieldKind(value.kind),
-  }]
+  }, readExtra(value, ['id', 'label', 'value', 'kind']))]
 }
 
 function readFieldKind(value: unknown): ProfileFieldKind {
@@ -377,8 +383,7 @@ function parseNode(value: unknown): ResumeNode | null {
 }
 
 function readBank(value: unknown): Experience[] {
-  const parsed = readExperiences(value)
-  return parsed.length > 0 ? parsed : cloneSeedBank()
+  return readExperiences(value)
 }
 
 function readKnowledge(value: unknown, bank: Experience[]): KnowledgeAnswer[] {
@@ -495,13 +500,13 @@ export function readSections(value: unknown): CatalogSection[] {
 function parseSection(value: unknown): CatalogSection[] {
   if (!isRecord(value) || typeof value.id !== 'string') return []
   const builtin = defaultSections().find((section) => section.id === value.id)
-  return [{
+  return [withExtra({
     id: value.id,
-    name: builtin?.name || readString(value.name) || 'Section',
+    name: readString(value.name).trim() || builtin?.name || 'Section',
     description: readString(value.description),
     active: value.active === true || value.active === false ? value.active : value.id !== 'projects',
     builtIn: Boolean(builtin),
-  }]
+  }, readExtra(value, ['id', 'name', 'description', 'active', 'builtIn']))]
 }
 
 function parseTextEntry(value: unknown): TextEntry[] {
@@ -522,13 +527,13 @@ function readEducation(value: unknown): EducationEntry[] {
   if (!Array.isArray(value)) return []
   return value.flatMap((entry) => {
     if (!isRecord(entry) || typeof entry.id !== 'string') return []
-    return [{
+    return [withExtra({
       id: entry.id,
       school: readString(entry.school),
       degree: readString(entry.degree),
       start: readString(entry.start),
       end: readString(entry.end),
-    }]
+    }, readExtra(entry, ['id', 'school', 'degree', 'start', 'end']))]
   })
 }
 

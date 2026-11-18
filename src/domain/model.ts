@@ -1,4 +1,5 @@
 import { defaultApplicationStatuses, type Application, type ApplicationStatus } from './applications'
+import type { Extra } from './extra'
 import { experienceCatalog } from './catalog'
 import { cloneSeedBank, type Experience } from './experiences'
 import type { FontId, FontSize, LineSpacing, MarginId, PageSize } from './fonts'
@@ -11,6 +12,7 @@ export type ProfileField = {
   label: string
   value: string
   kind: ProfileFieldKind
+  extra?: Extra
 }
 
 /** A title held at a company — multiple roles under one job = promotions. */
@@ -20,12 +22,14 @@ export type JobRole = {
   location: string
   start: string
   end: string
+  extra?: Extra
 }
 
 export type Job = {
   id: string
   company: string
   roles: JobRole[]
+  extra?: Extra
 }
 
 export type EducationEntry = {
@@ -34,6 +38,7 @@ export type EducationEntry = {
   degree: string
   start: string
   end: string
+  extra?: Extra
 }
 
 export type EducationData = {
@@ -46,6 +51,7 @@ export type Profile = {
   education: EducationEntry[]
   jobs: Job[]
   hidden?: boolean
+  extra?: Extra
 }
 
 export type RoleData = {
@@ -145,6 +151,7 @@ export type CatalogSection = {
   description: string
   active: boolean
   builtIn: boolean
+  extra?: Extra
 }
 
 export type SnapshotBlock = {
@@ -191,6 +198,8 @@ export type Cv = {
   versions: CvVersion[]
   nodes: ResumeNode[]
   edges: ResumeEdge[]
+  /** Anything else: language, notes… */
+  extra?: Extra
 }
 
 export type KnowledgeLevel = 0 | 1 | 2

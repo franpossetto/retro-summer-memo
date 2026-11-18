@@ -46,9 +46,18 @@ activeCvId: the CV open in the app.
 applications: [{ id, company, title, url, posting, location, appliedOn: "YYYY-MM-DD",
                  statusId: <applicationStatuses id>, attachment: null | { kind: "cv", cvId, versionId ("" = latest) },
                  events: [{ id, at (ISO), kind: "status" | "note", statusId, text }], createdAt, updatedAt }]
-  events are the history: a "status" event when it moved to statusId, "note" events for what happened in that step.
-applicationStatuses: [{ id, name, color: "#rrggbb", kind: "active" | "offer" | "rejected" | "withdrawn" }]
-  The user's pipeline, in order. kind tells open steps (active, offer) from closed ones.
+  events are the history, kept in date order: "status" when it moved to statusId, "note" for what happened in
+  that step, or any other kind you need ("interview", "call", "email", "task"…). An event dated in the future is
+  something coming up (the app shows it as next): e.g. { kind: "interview", at: "2026-03-20T10:00:00Z",
+  text: "Challenge técnico" }.
+applicationStatuses: [{ id, name, color: "#rrggbb", kind }]
+  The user's pipeline, in order. kind: "active", "offer", "rejected", "withdrawn" or anything else (counts as open).
+  An application may use a status id that is not listed yet: the status is created.
+
+# Extra data
+Every entity (profile, fields, jobs, roles, education, bank items, sections, CVs, applications, events, statuses)
+accepts data the model does not define under "extra": salary, recruiter, modality, a job's stack, an achievement's
+metric… e.g. add /applications/[id=…]/extra/salary. Unknown properties you set on an entity end up there too.
 
 # Editing with update_document
 - Operations: add, remove, replace, move, copy, test (RFC 6902). Paths point into the document above.

@@ -23,11 +23,18 @@ export function defaultQuery(): ApplicationQuery {
   return { text: '', statusIds: [], scope: 'all', staleDays: null, sort: 'activity' }
 }
 
-/** Most recent moment something happened to the application. */
-export function lastActivity(application: Application): string {
+/** Most recent moment something happened to the application (events scheduled later do not count). */
+export function lastActivity(application: Application, now: Date = new Date()): string {
+  const cutoff = now.toISOString()
   let latest = application.updatedAt || application.createdAt
-  for (const event of application.events) if (event.at > latest) latest = event.at
+  for (const event of application.events) if (event.at > latest && event.at <= cutoff) latest = event.at
   return latest
+}
+
+/** Events dated in the future (a challenge on the 20th, an interview next week), soonest first. */
+export function upcomingEvents(application: Application, now: Date = new Date()) {
+  const cutoff = now.toISOString()
+  return application.events.filter((event) => event.at > cutoff).sort((left, right) => left.at.localeCompare(right.at))
 }
 
 /** Whole days between `iso` and `now` (0 for today or a missing date). */
@@ -37,14 +44,17 @@ export function daysSince(iso: string, now: Date = new Date()): number {
   return Math.max(0, Math.floor((now.getTime() - time) / 86_400_000))
 }
 
-/** Still going: in an active step or holding an offer (not rejected nor withdrawn). */
+/** Still going: anything but a rejected or withdrawn step (custom kinds count as open). */
 export function isOpen(application: Application, statusById: Map<string, ApplicationStatus>): boolean {
   const kind = statusById.get(application.statusId)?.kind ?? 'active'
-  return kind === 'active' || kind === 'offer'
+  return kind !== 'rejected' && kind !== 'withdrawn'
 }
 
+/** Open, not holding an offer, nothing scheduled, and quiet for `days`. */
 export function isStale(application: Application, statusById: Map<string, ApplicationStatus>, days: number, now: Date = new Date()): boolean {
-  return statusById.get(application.statusId)?.kind === 'active' && daysSince(lastActivity(application), now) >= days
+  if (!isOpen(application, statusById) || statusById.get(application.statusId)?.kind === 'offer') return false
+  if (upcomingEvents(application, now).length > 0) return false
+  return daysSince(lastActivity(application, now), now) >= days
 }
 
 export function filterApplications(
