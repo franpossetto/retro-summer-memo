@@ -23,3 +23,6 @@ dist-ssr
 *.sln
 *.sw?
 .vercel
+
+# Built from src/mcp by `npm run mcp:build`
+supabase/functions/mcp/generated/

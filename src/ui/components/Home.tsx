@@ -17,6 +17,7 @@ import {
   type Profile,
   type ProfileField,
 } from '../../domain/model'
+import type { CvDraft } from '../../domain/documentOps'
 import { defaultFont, fonts, type FontId } from '../../domain/fonts'
 import {
   applyLinkedInImport,
@@ -31,16 +32,6 @@ export type ComposerSeed = {
   position: string
   company: string
   posting: string
-}
-
-export type CvDraft = {
-  title: string
-  position: string
-  company: string
-  posting: string
-  templateId: TemplateId
-  fontId: FontId
-  experienceIds: string[]
 }
 
 type HomeProps = {

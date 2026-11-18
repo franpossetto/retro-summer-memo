@@ -173,6 +173,39 @@ export function addStatus(
   return { statuses: [...statuses.slice(0, insertAt), status, ...statuses.slice(insertAt)], status }
 }
 
+/**
+ * The pipeline plus any status an application is in but the pipeline does not list: those are
+ * added, named after their id, instead of rewriting the application. History may still mention
+ * statuses deleted since; those are not brought back.
+ */
+export function withReferencedStatuses(statuses: ApplicationStatus[], applications: Application[]): ApplicationStatus[] {
+  const known = new Set(statuses.map((status) => status.id))
+  let result = statuses
+  for (const { statusId: id } of applications) {
+    if (!id || known.has(id)) continue
+    known.add(id)
+    const { statuses: next, status } = addStatus(result, statusNameFromId(id))
+    result = next.map((item) => (item === status ? { ...status, id } : item))
+  }
+  return result
+}
+
+/** Finds a status by id or name (ignoring case and accents); creates it when there is none. */
+export function findOrCreateStatus(
+  statuses: ApplicationStatus[],
+  value: string,
+): { statuses: ApplicationStatus[]; status: ApplicationStatus; created: boolean } {
+  const wanted = normalizeText(value)
+  const existing = statuses.find((status) => status.id === value || normalizeText(status.name) === wanted)
+  if (existing) return { statuses, status: existing, created: false }
+  return { ...addStatus(statuses, value.trim() || 'Nuevo estado'), created: true }
+}
+
+function statusNameFromId(id: string): string {
+  const words = id.replace(/[-_]+/g, ' ').trim()
+  return words ? words.charAt(0).toUpperCase() + words.slice(1) : 'Estado'
+}
+
 /** Removes a status; applications sitting in it move to `fallbackId` so none is left orphaned. */
 export function removeStatus(
   statuses: ApplicationStatus[],
@@ -396,14 +429,14 @@ export function readApplicationStatuses(value: unknown): ApplicationStatus[] {
 
 export function readApplications(value: unknown, statuses: ApplicationStatus[]): Application[] {
   if (!Array.isArray(value)) return []
-  const known = new Set(statuses.map((status) => status.id))
   const fallback = initialStatus(statuses).id
   const seen = new Set<string>()
   return value.flatMap((entry): Application[] => {
     if (!isRecord(entry) || typeof entry.id !== 'string' || !entry.id || seen.has(entry.id)) return []
     seen.add(entry.id)
     const url = readString(entry.url)
-    const statusId = known.has(readString(entry.statusId)) ? readString(entry.statusId) : fallback
+    // A status the pipeline does not list yet is kept: withReferencedStatuses adds it.
+    const statusId = readString(entry.statusId).trim() || fallback
     const createdAt = readString(entry.createdAt)
     return [{
       id: entry.id,

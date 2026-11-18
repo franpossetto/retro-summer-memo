@@ -6,12 +6,14 @@ import {
   createApplication,
   defaultApplicationStatuses,
   findDuplicates,
+  findOrCreateStatus,
   moveApplication,
   postingKey,
   readApplications,
   removeApplicationNote,
   removeStatus,
   titleSimilarity,
+  withReferencedStatuses,
   type Application,
 } from './applications'
 
@@ -160,6 +162,23 @@ describe('application lifecycle', () => {
       [{ id: 'a', company: 'Acme', statusId: 'gone', url: 'https://linkedin.com/jobs/view/7', events: [{ id: 'e', kind: 'bogus' }] }, { nope: true }],
       statuses,
     )
-    expect(application).toMatchObject({ id: 'a', statusId: 'sent', postingKey: 'linkedin:7', events: [], attachment: null })
+    // Unknown statuses are kept (withReferencedStatuses adds them to the pipeline), never rewritten.
+    expect(application).toMatchObject({ id: 'a', statusId: 'gone', postingKey: 'linkedin:7', events: [], attachment: null })
+  })
+
+  it('adds statuses that applications use but the pipeline does not list', () => {
+    const application = { ...apply('Acme', 'Backend Engineer'), statusId: 'call-con-el-ceo' }
+    const result = withReferencedStatuses(statuses, [application])
+    const added = result.find((status) => status.id === 'call-con-el-ceo')
+    expect(added).toMatchObject({ name: 'Call con el ceo', kind: 'active' })
+    expect(result.indexOf(added!)).toBeLessThan(result.findIndex((status) => status.id === 'offer'))
+    expect(withReferencedStatuses(statuses, [apply('Acme', 'X')])).toBe(statuses)
+  })
+
+  it('finds statuses by name ignoring case and accents, or creates them', () => {
+    expect(findOrCreateStatus(statuses, 'challenge TECNICO')).toMatchObject({ created: false, status: { id: 'challenge' } })
+    const created = findOrCreateStatus(statuses, 'Call con el CEO')
+    expect(created).toMatchObject({ created: true, status: { name: 'Call con el CEO', kind: 'active' } })
+    expect(created.statuses).toHaveLength(statuses.length + 1)
   })
 })

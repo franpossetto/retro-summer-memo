@@ -5,6 +5,7 @@
 import {
   readApplicationStatuses,
   readApplications,
+  withReferencedStatuses,
   type Application,
   type ApplicationStatus,
 } from '../../domain/applications'
@@ -228,7 +229,7 @@ export function fromTables(tables: Tables, previous?: ResumeDocument): ResumeDoc
     active !== undefined &&
     canonical(graphJson(previous.nodes, previous.edges)) === canonical(graphJson(active.nodes, active.edges))
 
-  const applicationStatuses: ApplicationStatus[] = readApplicationStatuses(
+  const pipeline: ApplicationStatus[] = readApplicationStatuses(
     bySort(tables.application_statuses).map((row) => ({ id: row.id, name: row.name, color: row.color, kind: row.kind })),
   )
   const eventsByApplication = groupBy(
@@ -263,8 +264,9 @@ export function fromTables(tables: Tables, previous?: ResumeDocument): ResumeDoc
           text: event.text,
         })),
       })),
-    applicationStatuses,
+    pipeline,
   )
+  const applicationStatuses = withReferencedStatuses(pipeline, applications)
 
   return {
     profile,

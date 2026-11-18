@@ -1,21 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { documentStoreContract } from '../ports/documentStore.contract'
+import { memoryStorage } from '../test/memoryStorage'
 import { sampleDocument } from '../test/sample'
 import { createLocalStore, readStoredDocument } from './local'
-
-function memoryStorage(): Storage {
-  const data = new Map<string, string>()
-  return {
-    get length() {
-      return data.size
-    },
-    clear: () => data.clear(),
-    getItem: (key) => data.get(key) ?? null,
-    key: (index) => [...data.keys()][index] ?? null,
-    removeItem: (key) => void data.delete(key),
-    setItem: (key, value) => void data.set(key, String(value)),
-  }
-}
 
 documentStoreContract('local store', async () => {
   const storage = memoryStorage()

@@ -64,20 +64,20 @@ describe('MCP server', () => {
     expect(metadata.authorization_servers).toEqual([`${url}/auth/v1`])
   })
 
-  it('lists the tools and the nuevo-job prompt', async () => {
+  it('lists the tools and the everyday prompts', async () => {
     const { token } = await newUser()
     const { message: tools } = await rpc(token, 'tools/list')
     expect(tools.result.tools.map((item: { name: string }) => item.name)).toEqual(
-      expect.arrayContaining(['check_duplicates', 'create_application', 'move_application', 'list_experiences']),
+      expect.arrayContaining(['get_document', 'update_document', 'check_duplicates', 'create_application', 'move_application', 'create_cv']),
     )
     const { message: prompts } = await rpc(token, 'prompts/list')
-    expect(prompts.result.prompts.map((item: { name: string }) => item.name)).toContain('nuevo-job')
+    expect(prompts.result.prompts.map((item: { name: string }) => item.name)).toEqual(['actualizar-mi-info', 'armar-cv', 'novedad'])
   })
 
   it('does not write before the app has created the account', async () => {
     const { token } = await newUser()
     const result = await tool(token, 'create_application', { company: 'Initech', title: 'SRE' })
-    expect(result.error).toMatch(/abrí la app/)
+    expect(result.error).toMatch(/entrá una vez/)
   })
 
   describe('with an account', () => {
@@ -116,9 +116,9 @@ describe('MCP server', () => {
       expect(await tool(user.token, 'move_application', { id, status: 'take HOME', note: 'Entrega el viernes' })).toMatchObject({
         status: 'Take home',
       })
-      expect(await tool(user.token, 'move_application', { id, status: 'Contratado' })).toMatchObject({
-        error: expect.stringContaining('No existe el estado'),
-      })
+      // A status that does not exist yet is created.
+      expect(await tool(user.token, 'move_application', { id, status: 'Contratado' })).toMatchObject({ created_status: 'Contratado' })
+      expect(await tool(user.token, 'move_application', { id, status: 'take home' })).toMatchObject({ status: 'Take home' })
       // Only the fields sent change.
       expect(await tool(user.token, 'update_application', { id, location: 'Híbrido' })).toMatchObject({
         company: 'Initech',
@@ -134,6 +134,8 @@ describe('MCP server', () => {
         'Referida por Peter',
         'take-home',
         'Entrega el viernes',
+        expect.any(String),
+        'take-home',
       ])
     })
 
@@ -143,5 +145,24 @@ describe('MCP server', () => {
       const result = await tool(stranger.token, 'search_applications', { text: 'acme' })
       expect(result.total).toBe(0)
     })
+  })
+})
+
+describe('MCP server — editing anything', () => {
+  it('edits the profile and the bank with update_document, and the app reads it back', async () => {
+    const user = await newUser()
+    await openDocument(createSupabaseStore(user.client, user.userId), () => sampleDocument())
+    const result = await tool(user.token, 'update_document', {
+      operations: [
+        { op: 'replace', path: '/profile/name', value: 'Guido Test' },
+        { op: 'add', path: '/profile/jobs/-', value: { company: 'S64', roles: [{ title: 'Tech Lead', start: '2023', end: 'Actualidad' }] } },
+        { op: 'add', path: '/bank/-', value: { category: 'Leadership', text: 'Lideré un equipo de 6 personas', skills: ['Leadership'] } },
+      ],
+    })
+    expect(result).toMatchObject({ saved: true, warnings: [] })
+    const document = await createSupabaseStore(user.client, user.userId).load()
+    expect(document?.profile.name).toBe('Guido Test')
+    expect(document?.profile.jobs.at(-1)).toMatchObject({ company: 'S64', roles: [{ title: 'Tech Lead' }] })
+    expect(document?.bank.some((item) => item.text === 'Lideré un equipo de 6 personas')).toBe(true)
   })
 })

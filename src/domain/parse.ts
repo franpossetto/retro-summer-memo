@@ -32,7 +32,7 @@ import {
 } from './model'
 import { defaultFont, defaultFontSize, defaultMargin, isFontId, isFontSize, isLineSpacing, isMarginId, isPageSize } from './fonts'
 import { cloneSeedBank, readExperiences, type Experience } from './experiences'
-import { readApplications, readApplicationStatuses } from './applications'
+import { readApplications, readApplicationStatuses, withReferencedStatuses } from './applications'
 import { isTemplateId } from './templates'
 
 /**
@@ -59,7 +59,8 @@ export function parseDocument(value: unknown): ResumeDocument {
 
   const { cvs, activeCvId } = resolveCvs(value, nodes, edges)
   const bank = readBank(value.bank)
-  const applicationStatuses = readApplicationStatuses(value.applicationStatuses)
+  const pipeline = readApplicationStatuses(value.applicationStatuses)
+  const applications = readApplications(value.applications, pipeline)
   return {
     nodes,
     edges,
@@ -70,8 +71,8 @@ export function parseDocument(value: unknown): ResumeDocument {
     roleGraphs: readRoleGraphs(value.roleGraphs),
     bank,
     knowledge: readKnowledge(value.knowledge, bank),
-    applications: readApplications(value.applications, applicationStatuses),
-    applicationStatuses,
+    applications,
+    applicationStatuses: withReferencedStatuses(pipeline, applications),
   }
 }
 

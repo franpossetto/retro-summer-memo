@@ -10,7 +10,15 @@ import {
 } from '@xyflow/react'
 import { type Experience } from '../domain/experiences'
 import { GraphCanvas, loadGraphPanelsOpen, type GraphPanelsOpen } from './components/GraphCanvas'
-import { Home, type ComposerSeed, type CvDraft } from './components/Home'
+import { Home, type ComposerSeed } from './components/Home'
+import {
+  buildCvVersion,
+  createCv as createCvDocument,
+  deleteCv as deleteCvDocument,
+  openCvGraph,
+  writeProfile,
+  type CvDraft,
+} from '../domain/documentOps'
 import { Applications, type TrackerData } from './components/applications/Applications'
 import { updateApplication, type Application } from '../domain/applications'
 import { ResumePreview } from './components/ResumePreview'
@@ -20,18 +28,13 @@ import { ExperienceMaster } from './components/Master'
 import { Library } from './components/Templates'
 import {
   activeCv,
-  applyProfile,
   arrangeNodes,
-  buildResume,
   cloneRoleGraph,
-  emptySnapshot,
-  graphFromSelection,
   nextPosition,
   roleHasExperience,
   type BulletData,
   type BulletNode,
   type Cv,
-  type CvVersion,
   type EducationData,
   type EducationNode,
   type PersonNode,
@@ -53,8 +56,6 @@ import {
   margins,
   lineSpacings,
   spacingLabel,
-  defaultFontSize,
-  defaultMargin,
   isFontId,
   isFontSize,
   isLineSpacing,
@@ -468,13 +469,7 @@ export default function App({ initialDocument, store, account, notice }: AppProp
   }
 
   function openCv(id: string) {
-    setDoc((current) => {
-      if (current.activeCvId === id) return current
-      const cvs = rememberGraph(current)
-      const next = cvs.find((cv) => cv.id === id)
-      if (!next) return current
-      return { ...current, cvs, activeCvId: id, nodes: next.nodes, edges: next.edges }
-    })
+    setDoc((current) => openCvGraph(current, id))
     setSelectedVersionId(null)
     setMetadataOpen(false)
     closeComposer()
@@ -486,50 +481,16 @@ export default function App({ initialDocument, store, account, notice }: AppProp
     const versionId = crypto.randomUUID()
     const forApplication = cvSeed?.applicationId
     setDoc((current) => {
-      const version: CvVersion = { id: versionId, createdAt: new Date().toISOString(), snapshot: emptySnapshot() }
-      const selected = draft.experienceIds
-        .map((experienceId) => current.bank.find((item) => item.id === experienceId))
-        .filter((item): item is Experience => Boolean(item))
-      const graph = graphFromSelection(
-        current.profile,
-        { title: draft.position || draft.title, company: draft.company },
-        selected,
-      )
-      const enabledSections = selected.length > 0
-        ? ['personal', 'experience', 'skills']
-        : ['personal']
-      const next: Cv = {
-        id,
-        title: draft.title.trim() || 'Sin título',
-        position: draft.position.trim(),
-        company: draft.company.trim(),
-        posting: draft.posting,
-        summary: '',
-        templateId: draft.templateId,
-        fontId: draft.fontId,
-        fontSize: defaultFontSize(draft.templateId),
-        lineHeight: 1.15,
-        marginId: defaultMargin(draft.templateId),
-        pageSize: 'letter',
-        enabledSections,
-        versions: [version],
-        nodes: graph.nodes,
-        edges: graph.edges,
-      }
+      const { document } = createCvDocument(current, draft, { id, versionId })
+      if (!forApplication) return document
+      // Latest version ('') until the user pins the one they actually sent.
       return {
-        ...current,
-        cvs: [...rememberGraph(current), next],
-        activeCvId: id,
-        nodes: graph.nodes,
-        edges: graph.edges,
-        // Latest version ('') until the user pins the one they actually sent.
-        applications: forApplication
-          ? current.applications.map((application) =>
-              application.id === forApplication
-                ? updateApplication(application, { attachment: { kind: 'cv', cvId: id, versionId: '' } })
-                : application,
-            )
-          : current.applications,
+        ...document,
+        applications: document.applications.map((application) =>
+          application.id === forApplication
+            ? updateApplication(application, { attachment: { kind: 'cv', cvId: id, versionId: '' } })
+            : application,
+        ),
       }
     })
     setSelectedVersionId(versionId)
@@ -571,18 +532,7 @@ export default function App({ initialDocument, store, account, notice }: AppProp
   }
 
   function deleteCv(id: string) {
-    setDoc((current) => {
-      const cvs = current.cvs.filter((item) => item.id !== id)
-      if (current.activeCvId !== id) return { ...current, cvs }
-      const next = cvs[0]
-      return {
-        ...current,
-        cvs,
-        activeCvId: next?.id ?? '',
-        nodes: next?.nodes ?? [],
-        edges: next?.edges ?? [],
-      }
-    })
+    setDoc((current) => deleteCvDocument(current, id))
     setScreen('home')
   }
 
@@ -686,20 +636,7 @@ export default function App({ initialDocument, store, account, notice }: AppProp
 
   function build() {
     const versionId = crypto.randomUUID()
-    setDoc((current) => {
-      const summary = current.cvs.find((item) => item.id === current.activeCvId)?.summary ?? ''
-      const version: CvVersion = {
-        id: versionId,
-        createdAt: new Date().toISOString(),
-        snapshot: buildResume(current.nodes, current.edges, summary),
-      }
-      return {
-        ...current,
-        cvs: current.cvs.map((item) =>
-          item.id === current.activeCvId ? { ...item, versions: [...item.versions, version] } : item,
-        ),
-      }
-    })
+    setDoc((current) => buildCvVersion(current, current.activeCvId, { versionId }).document)
     setSelectedVersionId(versionId)
     setViews((current) => ({ ...current, preview: true }))
   }
@@ -1541,21 +1478,6 @@ function formatVersionDate(iso: string) {
   const date = new Date(iso)
   if (Number.isNaN(date.getTime())) return ''
   return date.toLocaleString('es-AR', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
-}
-
-function writeProfile(document: ResumeDocument, profile: Profile): ResumeDocument {
-  return {
-    ...document,
-    profile,
-    nodes: applyProfile(document.nodes, profile),
-    cvs: document.cvs.map((cv) => ({ ...cv, nodes: applyProfile(cv.nodes, profile) })),
-  }
-}
-
-function rememberGraph(document: ResumeDocument): Cv[] {
-  return document.cvs.map((cv) => (
-    cv.id === document.activeCvId ? { ...cv, nodes: document.nodes, edges: document.edges } : cv
-  ))
 }
 
 function deselect(node: ResumeNode): ResumeNode {

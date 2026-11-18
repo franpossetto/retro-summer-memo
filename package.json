@@ -11,6 +11,9 @@
     "test": "vitest run",
     "test:integration": "TEST_SCOPE=integration vitest run",
     "test:mcp": "TEST_SCOPE=mcp vitest run",
+    "mcp:build": "vite build --config vite.mcp.config.ts",
+    "mcp:serve": "npm run mcp:build && supabase functions serve mcp",
+    "mcp:deploy": "npm run mcp:build && supabase functions deploy mcp --no-verify-jwt",
     "db:start": "supabase start -x imgproxy,logflare,vector,supavisor",
     "db:stop": "supabase stop",
     "db:reset": "supabase db reset"
@@ -22,6 +25,7 @@
     "react-dom": "^19.3.1"
   },
   "devDependencies": {
+    "@modelcontextprotocol/server": "^2.4.0",
     "@types/node": "^24.19.2",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
@@ -30,6 +34,7 @@
     "supabase": "^3.2.0",
     "typescript": "~6.0.3",
     "vite": "^8.3.4",
-    "vitest": "^5.1.1"
+    "vitest": "^5.1.1",
+    "zod": "^4.6.7"
   }
 }
