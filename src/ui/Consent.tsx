@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Brand } from './components/brand/Brand'
 import type { AuthorizationRequest, OAuthConsent } from '../ports/auth'
 
 type State =
@@ -54,6 +55,7 @@ export function ConsentScreen({ consent, authorizationId, email }: { consent: OA
   return (
     <div className="signin">
       <div className="signin-card consent-card">
+        <Brand size={28} className="signin-brand" />
         {state.status === 'loading' ? <p>Cargando el pedido de acceso…</p> : null}
         {state.status === 'sending' ? <p>{state.message}</p> : null}
         {state.status === 'back' ? <BackToClient {...state} /> : null}

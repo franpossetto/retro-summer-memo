@@ -4685,6 +4685,31 @@ button.save-indicator:hover {
   gap: 8px;
 }
 
+.signin-ways,
+.signin-sent {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.signin-brand {
+  margin-bottom: 4px;
+}
+
+.signin-social {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sidebar-brand {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  margin-bottom: 8px;
+}
+
 /* ------------------------------------------------------------------ */
 /* Job applications tracker                                            */
 /* ------------------------------------------------------------------ */

@@ -1,4 +1,5 @@
 import type { SaveStatus } from '../useDocumentSync'
+import { LogoMark } from './brand/Brand'
 
 type SidebarProps = {
   section: 'applications' | 'projects' | 'personal' | 'experience' | 'library' | 'workspace'
@@ -17,6 +18,9 @@ type SidebarProps = {
 export function Sidebar({ section, onApplications, onProjects, onPersonal, onExperience, onLibrary, save, onRetrySave, account, assistant }: SidebarProps) {
   return (
     <nav className="sidebar" aria-label="Secciones">
+      <span className="sidebar-brand" title="ReSuMe · Retro Summer Memo">
+        <LogoMark size={26} />
+      </span>
       <button
         type="button"
         className="sidebar-item"
