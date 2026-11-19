@@ -83,7 +83,9 @@ jobs:
   deploy:
     name: Deploy to production
     needs: [check, integration]
-    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    # A merge to main deploys. A manual run (Actions → CI/CD → Run workflow) deploys the branch it
+    # runs on: the way to try a change to this job before merging it.
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     environment:
       name: production
@@ -154,14 +156,20 @@ jobs:
           done
           echo "::error::retro-summer-memo.com still serves $live, not $bundle"
           exit 1
+      # Right after publishing, some CDN nodes still serve the previous page for a moment (whose
+      # bundle is gone: 404), so the checks retry for up to two minutes before failing.
       - name: Smoke test
         run: |
-          curl -fsS -o /dev/null https://retro-summer-memo.com/
-          # The app must have been built with this project's Supabase settings.
-          bundle=$(curl -fsS https://retro-summer-memo.com/ | grep -o 'assets/index-[A-Za-z0-9_-]*\.js' | head -1)
-          curl -fsS "https://retro-summer-memo.com/$bundle" | grep -q "$SUPABASE_PROJECT_REF.supabase.co" || {
-            echo "::error::The app was built without its Supabase settings ($bundle)"
-            exit 1
-          }
-          status=$(curl -s -o /dev/null -w '%{http_code}' -X POST https://retro-summer-memo.com/mcp -H 'content-type: application/json' -d '{}')
-          [ "$status" = "401" ] || { echo "::error::The MCP should ask for sign-in (401), got $status"; exit 1; }
+          for attempt in $(seq 1 40); do
+            page=$(curl -fsS "https://retro-summer-memo.com/?check=$attempt" || true)
+            bundle=$(echo "$page" | grep -o 'assets/index-[A-Za-z0-9_-]*\.js' | head -1)
+            app=$([ -n "$bundle" ] && curl -fsS "https://retro-summer-memo.com/$bundle" | grep -c "$SUPABASE_PROJECT_REF.supabase.co" || true)
+            mcp=$(curl -s -o /dev/null -w '%{http_code}' -X POST https://retro-summer-memo.com/mcp -H 'content-type: application/json' -d '{}')
+            if [ "${app:-0}" -gt 0 ] && [ "$mcp" = "401" ]; then
+              echo "The app ($bundle) carries its Supabase settings and the MCP asks for sign-in."
+              exit 0
+            fi
+            sleep 3
+          done
+          echo "::error::After two minutes: app bundle '$bundle' with Supabase settings: ${app:-0}; MCP answered $mcp (expected 401)"
+          exit 1
