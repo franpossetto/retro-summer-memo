@@ -36,6 +36,7 @@ import { defaultFont, defaultFontSize, defaultMargin, isFontId, isFontSize, isLi
 import { readExperiences, type Experience } from './experiences'
 import { readExtra, withExtra } from './extra'
 import { readApplications, readApplicationStatuses, withReferencedStatuses } from './applications'
+import { readCompanies } from './companies'
 import { isTemplateId } from './templates'
 
 /**
@@ -76,6 +77,7 @@ export function parseDocument(value: unknown): ResumeDocument {
     knowledge: readKnowledge(value.knowledge, bank),
     applications,
     applicationStatuses: withReferencedStatuses(pipeline, applications),
+    companies: readCompanies(value.companies),
   }
 }
 

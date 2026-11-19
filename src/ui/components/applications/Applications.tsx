@@ -18,9 +18,11 @@ import {
   type Application,
   type ApplicationStatus,
 } from '../../../domain/applications'
+import { companyOf, deleteCompany, deleteCompanyNote, saveCompany, saveCompanyNote, type Company } from '../../../domain/companies'
 import type { Cv, ResumeDocument } from '../../../domain/model'
 import { formatDateTime, formatDay, relativeTime } from '../../format'
-import { ApplicationDetail } from './ApplicationDetail'
+import { CompanyLogo } from '../companies/CompanyLogo'
+import { ApplicationPage, type CompanyActions } from './ApplicationPage'
 import { ApplicationForm, type ApplicationFormValues } from './ApplicationForm'
 import { cvLabel } from './cvs'
 import { StatusSelect } from './StatusPill'
@@ -28,11 +30,12 @@ import { StatusEditor } from './StatusEditor'
 import { PromptHint } from '../assistant/PromptHint'
 import { prompts } from '../assistant/prompts'
 
-export type TrackerData = Pick<ResumeDocument, 'applications' | 'applicationStatuses'>
+export type TrackerData = Pick<ResumeDocument, 'applications' | 'applicationStatuses' | 'companies'>
 
 type ApplicationsProps = {
   applications: Application[]
   statuses: ApplicationStatus[]
+  companies: Company[]
   cvs: Cv[]
   onChange: (update: (current: TrackerData) => TrackerData) => void
   onOpenCv: (cvId: string, versionId: string) => void
@@ -78,7 +81,7 @@ function loadQuery(): ApplicationQuery {
   return defaultQuery()
 }
 
-export function Applications({ applications, statuses, cvs, onChange, onOpenCv, onBuildCv, assistant }: ApplicationsProps) {
+export function Applications({ applications, statuses, companies, cvs, onChange, onOpenCv, onBuildCv, assistant }: ApplicationsProps) {
   const [query, setQuery] = useState<ApplicationQuery>(loadQuery)
   const [view, setView] = useState<ViewMode>(loadView)
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -162,6 +165,33 @@ export function Applications({ applications, statuses, cvs, onChange, onOpenCv, 
     setSelectedId(null)
   }
 
+  /**
+   * Runs a company edit: first on what is on screen, to report a refusal (a rename onto another
+   * company…) instead of throwing inside a state update; then on the latest state.
+   */
+  function companyEdit(edit: (current: TrackerData) => TrackerData): string | null {
+    try {
+      edit({ applications, applicationStatuses: statuses, companies })
+    } catch (error) {
+      return error instanceof Error ? error.message : String(error)
+    }
+    onChange((current) => {
+      try {
+        return edit(current)
+      } catch {
+        return current
+      }
+    })
+    return null
+  }
+
+  const companyActions: CompanyActions = {
+    save: (input) => companyEdit((current) => saveCompany(current, input).document),
+    saveNote: (company, input) => companyEdit((current) => saveCompanyNote(current, company, input).document),
+    deleteNote: (companyId, noteId) => void companyEdit((current) => deleteCompanyNote(current, companyId, noteId)),
+    delete: (companyId) => void companyEdit((current) => deleteCompany(current, companyId)),
+  }
+
   function submitForm(values: ApplicationFormValues, options: { buildCv: boolean }) {
     if (editing) {
       replace(
@@ -183,6 +213,45 @@ export function Applications({ applications, statuses, cvs, onChange, onOpenCv, 
     setForm(null)
     setSelectedId(created.id)
     if (options.buildCv) onBuildCv(created)
+  }
+
+  if (selected) {
+    return (
+      <div className="home tracker">
+        <ApplicationPage
+          key={selected.id}
+          application={selected}
+          applications={applications}
+          statuses={statuses}
+          companies={companies}
+          cvs={cvs}
+          now={now}
+          onChange={replace}
+          company={companyActions}
+          onDelete={() => remove(selected.id)}
+          onEdit={() => setForm({ mode: 'edit', id: selected.id })}
+          onClose={() => setSelectedId(null)}
+          onSelect={setSelectedId}
+          onOpenCv={onOpenCv}
+          onBuildCv={() => onBuildCv(selected)}
+          assistant={assistant}
+        />
+        {form ? (
+          <ApplicationForm
+            initial={editing}
+            applications={applications}
+            statuses={statuses}
+            cvs={cvs}
+            onSubmit={submitForm}
+            onCancel={() => setForm(null)}
+            onOpen={(id) => {
+              setForm(null)
+              setSelectedId(id)
+            }}
+          />
+        ) : null}
+      </div>
+    )
   }
 
   return (
@@ -289,7 +358,7 @@ export function Applications({ applications, statuses, cvs, onChange, onOpenCv, 
             ) : null}
           </div>
 
-          <div className={selected ? 'tracker-body has-detail' : 'tracker-body'}>
+          <div className="tracker-body">
             <div className="tracker-results">
               {visible.length === 0 ? (
                 <p className="tracker-none">
@@ -303,6 +372,7 @@ export function Applications({ applications, statuses, cvs, onChange, onOpenCv, 
                   applications={visible}
                   statuses={statuses}
                   statusById={statusById}
+                  companies={companies}
                   cvs={cvs}
                   selectedId={selectedId}
                   now={now}
@@ -319,6 +389,7 @@ export function Applications({ applications, statuses, cvs, onChange, onOpenCv, 
                         (query.scope === 'open') === (status.kind === 'active' || status.kind === 'offer')),
                   )}
                   statusById={statusById}
+                  companies={companies}
                   selectedId={selectedId}
                   now={now}
                   onSelect={setSelectedId}
@@ -326,23 +397,6 @@ export function Applications({ applications, statuses, cvs, onChange, onOpenCv, 
                 />
               )}
             </div>
-            {selected ? (
-              <ApplicationDetail
-                key={selected.id}
-                application={selected}
-                applications={applications}
-                statuses={statuses}
-                cvs={cvs}
-                onChange={replace}
-                onDelete={() => remove(selected.id)}
-                onEdit={() => setForm({ mode: 'edit', id: selected.id })}
-                onClose={() => setSelectedId(null)}
-                onSelect={setSelectedId}
-                onOpenCv={onOpenCv}
-                onBuildCv={() => onBuildCv(selected)}
-                assistant={assistant}
-              />
-            ) : null}
           </div>
         </>
       )}
@@ -389,6 +443,7 @@ function useNow(): Date {
 type ResultsProps = {
   applications: Application[]
   statusById: Map<string, ApplicationStatus>
+  companies: Company[]
   selectedId: string | null
   now: Date
   onSelect: (id: string) => void
@@ -416,6 +471,7 @@ function ApplicationList({
   applications,
   statuses,
   statusById,
+  companies,
   cvs,
   selectedId,
   now,
@@ -446,8 +502,11 @@ function ApplicationList({
             >
               <td>
                 <button type="button" className="tracker-row-main" onClick={() => onSelect(application.id)}>
-                  <strong>{application.company || 'Sin empresa'}</strong>
-                  <span>{application.title || 'Sin puesto'}</span>
+                  <CompanyLogo name={application.company} company={companyOf(companies, application)} size={32} />
+                  <span className="tracker-row-text">
+                    <strong>{application.company || 'Sin empresa'}</strong>
+                    <span>{application.title || 'Sin puesto'}</span>
+                  </span>
                 </button>
               </td>
               <td>
@@ -479,7 +538,7 @@ function ApplicationList({
   )
 }
 
-function ApplicationBoard({ applications, statuses, statusById, selectedId, now, onSelect, onMove }: ResultsProps & { statuses: ApplicationStatus[] }) {
+function ApplicationBoard({ applications, statuses, statusById, companies, selectedId, now, onSelect, onMove }: ResultsProps & { statuses: ApplicationStatus[] }) {
   const [over, setOver] = useState<string | null>(null)
   const byStatus = new Map<string, Application[]>(statuses.map((status) => [status.id, []]))
   for (const application of applications) byStatus.get(application.statusId)?.push(application)
@@ -526,7 +585,10 @@ function ApplicationBoard({ applications, statuses, statusById, selectedId, now,
               }}
               onClick={() => onSelect(application.id)}
             >
-              <strong>{application.company || 'Sin empresa'}</strong>
+              <span className="tracker-card-company">
+                <CompanyLogo name={application.company} company={companyOf(companies, application)} size={20} />
+                <strong>{application.company || 'Sin empresa'}</strong>
+              </span>
               <span>{application.title || 'Sin puesto'}</span>
               <ActivityCell application={application} statusById={statusById} now={now} />
             </button>

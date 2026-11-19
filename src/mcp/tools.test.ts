@@ -10,13 +10,13 @@ import { registerTools } from './tools'
 
 const now = new Date('2026-11-18T12:00:00.000Z')
 
-async function setup() {
+async function setup(at: Date = now) {
   const store = createLocalStore(memoryStorage(), 'mcp-test')
   const document = sampleDocument()
   await store.save(document)
   const handler = createMcpHandler(() => {
     const server = new McpServer({ name: 'test', version: '0' })
-    registerTools(server, { store, now: () => now })
+    registerTools(server, { store, now: () => at })
     return server
   })
 
@@ -51,7 +51,8 @@ describe('MCP tools', () => {
       expect.arrayContaining(['describe_model', 'cv_guidelines', 'get_document', 'update_document', 'list_sections', 'save_entry', 'save_experience', 'build_cv', 'move_application']),
     )
     const prompts = (await rpc('prompts/list', {})).result.prompts.map((prompt: { name: string }) => prompt.name)
-    expect(prompts).toEqual(['actualizar-mi-info', 'armar-cv', 'novedad'])
+    expect(prompts).toEqual(['actualizar-mi-info', 'armar-cv', 'como-me-fue', 'investigar-empresa', 'preparar-entrevista', 'novedad'])
+    expect(tools).toEqual(expect.arrayContaining(['get_company', 'save_company', 'save_company_note', 'delete_company_note', 'delete_company', 'save_debrief', 'delete_event']))
   })
 
   it('returns the document without graphs unless asked', async () => {
@@ -234,4 +235,111 @@ describe('MCP tools', () => {
     stored = await load()
     expect(stored.applications.some((item) => item.id === acme.id)).toBe(false)
   })
+
+  describe('companies and debriefs', () => {
+    it('saves research about a company and shows it with the applications and how each step went', async () => {
+      const { call, load } = await setup()
+      const saved = await call('save_company', {
+        name: 'Globex Corp',
+        website: 'globex.com',
+        about: 'Energy for everyone',
+        mission: 'Power the world',
+        values: ['Ownership'],
+        extra: { size: '1000+' },
+      })
+      expect(saved).toMatchObject({ created: true, name: 'Globex Corp', applications: 1 })
+
+      const note = await call('save_company_note', { company: 'globex', kind: 'layoff', date: '2026-02', text: 'Cut 5%', source: 'https://news.test/globex' })
+      expect(note.company_id).toBe(saved.company_id)
+      expect(await call('save_company_note', { company: 'Globex', text: 'x', date: 'febrero' })).toMatchObject({ error: expect.stringContaining('YYYY') })
+
+      const globex = (await load()).applications.find((application) => application.company === 'Globex')!
+      const debrief = await call('save_debrief', {
+        application_id: globex.id,
+        at: '2026-11-17',
+        how_it_went: 'Bien',
+        rating: 4,
+        asked: ['Por qué Globex'],
+        unsaid: ['Que tengo otra oferta'],
+      })
+      expect(debrief).toMatchObject({ step: 'CV enviado', at: '2026-11-17T12:00:00.000Z', how_it_went: 'Bien', rating: 4, asked: ['Por qué Globex'] })
+      expect(debrief.said).toBeUndefined()
+
+      const view = await call('get_company', { company: 'GLOBEX' })
+      expect(view).toMatchObject({
+        company_id: saved.company_id,
+        name: 'Globex Corp',
+        mission: 'Power the world',
+        values: ['Ownership'],
+        extra: { size: '1000+' },
+        notes: [{ note_id: note.note_id, kind: 'layoff', date: '2026-02', text: 'Cut 5%', source: 'https://news.test/globex' }],
+        applications: [{ id: globex.id, debriefs: [{ debrief_id: debrief.debrief_id, unsaid: ['Que tengo otra oferta'] }] }],
+      })
+
+      const application = await call('get_application', { id: globex.id })
+      expect(application.company).toMatchObject({ saved: true, company_id: saved.company_id, notes: 1 })
+      expect(application.history.at(-1)).toMatchObject({ kind: 'debrief', debrief_id: debrief.debrief_id, rating: 4 })
+
+      // Only the fields sent change.
+      await call('save_debrief', { application_id: globex.id, debrief_id: debrief.debrief_id, said: ['Que me gusta el producto'] })
+      const after = (await load()).applications.find((item) => item.id === globex.id)!.events.find((event) => event.id === debrief.debrief_id)!
+      expect(after.text).toBe('Bien')
+      expect(after.debrief).toMatchObject({ rating: 4, said: ['Que me gusta el producto'], unsaid: ['Que tengo otra oferta'] })
+
+      expect(await call('delete_event', { application_id: globex.id, event_id: debrief.debrief_id })).toEqual({ deleted: debrief.debrief_id })
+      expect(await call('delete_company_note', { company: saved.company_id, note_id: note.note_id })).toEqual({ deleted: note.note_id })
+      expect(await call('delete_company', { company: 'Globex' })).toEqual({ deleted: 'Globex Corp', notes: 0 })
+      expect((await load()).companies.map((company) => company.name)).toEqual(['Acme Inc.', 'Initech'])
+    })
+
+    it("takes a day as its midday, and today as now so it does not look scheduled", async () => {
+      const { call, load } = await setup()
+      const globex = (await load()).applications.find((application) => application.company === 'Globex')!
+      // now is 2026-11-18T12:00Z: today's midday is not ahead; at 08:00Z it would be.
+      const today = await call('save_debrief', { application_id: globex.id, at: '2026-11-18', how_it_went: 'x' })
+      expect(today.at).toBe('2026-11-18T12:00:00.000Z')
+      const past = await call('save_debrief', { application_id: globex.id, at: '2026-11-02', how_it_went: 'y' })
+      expect(past.at).toBe('2026-11-02T12:00:00.000Z')
+      expect(await call('save_debrief', { application_id: globex.id, at: 'ayer' })).toMatchObject({ error: expect.stringContaining('YYYY-MM-DD') })
+
+      const early = await setup(new Date('2026-11-18T08:00:00.000Z'))
+      const id = (await early.load()).applications.find((application) => application.company === 'Globex')!.id
+      expect((await early.call('save_debrief', { application_id: id, at: '2026-11-18', how_it_went: 'x' })).at).toBe('2026-11-18T08:00:00.000Z')
+    })
+
+    it('tells what is known about the company when an application is created, and refuses unknown steps', async () => {
+      const { call, load } = await setup()
+      const created = await call('create_application', { company: 'ACME', title: 'Staff Engineer', confirm_duplicate: true })
+      expect(created.company).toMatchObject({ saved: true, company_id: 'company-acme', notes: 3 })
+      const fresh = await call('create_application', { company: 'Hooli', title: 'Dev' })
+      expect(fresh.company).toMatchObject({ saved: false })
+      expect(await call('get_company', { company: 'Hooli' })).toMatchObject({ company_id: null, saved: false, applications: [{ company: 'Hooli' }] })
+      expect(await call('get_company', { company: 'Nadie' })).toMatchObject({ error: expect.stringContaining('No hay nada') })
+
+      const hooli = (await load()).applications.find((application) => application.company === 'Hooli')!
+      expect(await call('save_debrief', { application_id: hooli.id, stage: 'Call con el CEO', how_it_went: 'x' })).toMatchObject({
+        error: expect.stringContaining('No existe el estado'),
+      })
+      expect(await call('delete_event', { application_id: hooli.id, event_id: hooli.events[0].id })).toMatchObject({ error: expect.stringContaining('no se borran') })
+    })
+
+    it('renames the applications along with the company', async () => {
+      const { call, load } = await setup()
+      await call('save_company', { company_id: 'company-acme', name: 'Acme Engines' })
+      expect((await load()).applications.map((application) => application.company)).toEqual(['Acme Engines', 'Globex'])
+      expect(await call('save_company', { company_id: 'company-acme', name: 'Initech' })).toMatchObject({ error: expect.stringContaining('Ya existe') })
+    })
+
+    it('edits companies and their notes through update_document too', async () => {
+      const { call, load } = await setup()
+      const result = await call('update_document', {
+        operations: [{ op: 'add', path: '/companies/[id=company-initech]/notes/-', value: { kind: 'hiring', text: 'Hiring 20 engineers' } }],
+      })
+      expect(result.changes).toEqual(expect.arrayContaining([{ table: 'company_notes', upserted: 1, deleted: 0 }]))
+      const [note] = (await load()).companies.find((company) => company.id === 'company-initech')!.notes
+      expect(note).toMatchObject({ kind: 'hiring', text: 'Hiring 20 engineers', addedAt: now.toISOString() })
+      expect(note.id).toBeTruthy()
+    })
+  })
 })
+
