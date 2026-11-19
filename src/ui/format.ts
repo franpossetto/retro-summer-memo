@@ -44,3 +44,13 @@ export function relativeTime(value: string, now: Date = new Date()): string {
   if (days < 365) return relativeFormat.format(-Math.round(days / 30), 'month')
   return relativeFormat.format(-Math.round(days / 365), 'year')
 }
+
+const monthFormat = new Intl.DateTimeFormat(LOCALE, { month: 'short', year: 'numeric' })
+
+/** A note's date at whatever precision it has: "2026", "mar 2026" or "14 mar 2026". */
+export function formatPartialDate(value: string): string {
+  if (/^\d{4}$/.test(value)) return value
+  const month = /^(\d{4})-(\d{2})$/.exec(value)
+  if (month) return monthFormat.format(new Date(Number(month[1]), Number(month[2]) - 1, 1))
+  return formatDay(value)
+}

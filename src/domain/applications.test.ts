@@ -5,13 +5,19 @@ import {
   companyKey,
   createApplication,
   defaultApplicationStatuses,
+  emptyDebrief,
   findDuplicates,
   findOrCreateStatus,
   moveApplication,
   postingKey,
+  isEmptyDebrief,
   readApplications,
+  readDebrief,
   removeApplicationNote,
   removeStatus,
+  saveDebrief,
+  stageVisits,
+  stepsAhead,
   titleSimilarity,
   withReferencedStatuses,
   type Application,
@@ -183,5 +189,68 @@ describe('application lifecycle', () => {
     const created = findOrCreateStatus(statuses, 'Call con el CEO')
     expect(created).toMatchObject({ created: true, status: { name: 'Call con el CEO', kind: 'active' } })
     expect(created.statuses).toHaveLength(statuses.length + 1)
+  })
+})
+
+describe('debriefs and stages', () => {
+  const statuses = defaultApplicationStatuses()
+
+  function process() {
+    const created = createApplication({ company: 'Globex', title: 'Dev', note: 'Referido' }, statuses, at('2026-03-01T10:00:00.000Z'))
+    return moveApplication(created, 'hr-call', 'Call el lunes', at('2026-03-03T10:00:00.000Z'))
+  }
+
+  it('adds how a step went to the current step, and edits only what is given', () => {
+    const { application, eventId } = saveDebrief(
+      process(),
+      { text: ' Bien ', rating: 4.4, asked: ['Por qué me voy', '  '], liked: 'Liderazgo\nInglés' as unknown as string[] },
+      at('2026-03-06T15:00:00.000Z'),
+    )
+    const event = application.events.find((item) => item.id === eventId)!
+    expect(event).toMatchObject({ kind: 'debrief', statusId: 'hr-call', at: '2026-03-06T15:00:00.000Z', text: 'Bien' })
+    expect(event.debrief).toEqual({ ...emptyDebrief(), rating: 4, asked: ['Por qué me voy'], liked: ['Liderazgo', 'Inglés'] })
+
+    const edited = saveDebrief(application, { id: eventId, unsaid: ['Otra oferta'], rating: null }, at('2026-03-07T00:00:00.000Z')).application
+    const again = edited.events.find((item) => item.id === eventId)!
+    expect(again.text).toBe('Bien')
+    expect(again.debrief).toEqual({ ...emptyDebrief(), asked: ['Por qué me voy'], liked: ['Liderazgo', 'Inglés'], unsaid: ['Otra oferta'] })
+    expect(edited.events.filter((item) => item.kind === 'debrief')).toHaveLength(1)
+  })
+
+  it('refuses to put a debrief on a status change or an unknown event', () => {
+    const application = process()
+    const status = application.events.find((event) => event.kind === 'status')!
+    expect(() => saveDebrief(application, { id: status.id, text: 'x' })).toThrow(/cambio de estado/)
+    expect(() => saveDebrief(application, { id: 'nope' })).toThrow(/No existe el evento/)
+  })
+
+  it('keeps debriefs through storage parsing', () => {
+    const { application } = saveDebrief(process(), { text: 'Bien', rating: 5, people: ['CTO'] }, at('2026-03-06T00:00:00.000Z'))
+    const [read] = readApplications(JSON.parse(JSON.stringify([application])), statuses)
+    expect(read).toEqual(application)
+    expect(readDebrief({ rating: '9', asked: 'a\nb', said: [1, 'ok'] })).toEqual({ ...emptyDebrief(), rating: 5, asked: ['a', 'b'], said: ['ok'] })
+    expect(isEmptyDebrief(emptyDebrief())).toBe(true)
+  })
+
+  it('tells the process step by step, without what is scheduled', () => {
+    let application = saveDebrief(process(), { text: 'Bien' }, at('2026-03-06T00:00:00.000Z')).application
+    application = addApplicationNote(application, 'Me mandaron el challenge', at('2026-03-07T00:00:00.000Z'))
+    application = {
+      ...application,
+      events: [...application.events, { id: 'later', at: '2026-04-01T00:00:00.000Z', kind: 'interview', statusId: 'hr-call', text: 'Entrevista' }],
+    }
+    const visits = stageVisits(application, at('2026-03-10T00:00:00.000Z'))
+    expect(visits.map((visit) => [visit.statusId, visit.current, visit.events.map((event) => event.text)])).toEqual([
+      ['sent', false, ['Referido']],
+      ['hr-call', true, ['Call el lunes', 'Bien', 'Me mandaron el challenge']],
+    ])
+    expect(stepsAhead(application, statuses, visits).map((status) => status.id)).toEqual(['challenge', 'interview'])
+  })
+
+  it('shows the current step even without a status change for it, and nothing ahead once closed', () => {
+    const application = { ...process(), statusId: 'rejected' }
+    const visits = stageVisits(application, at('2026-03-10T00:00:00.000Z'))
+    expect(visits.at(-1)).toMatchObject({ statusId: 'rejected', current: true, events: [] })
+    expect(stepsAhead(application, statuses, visits)).toEqual([])
   })
 })

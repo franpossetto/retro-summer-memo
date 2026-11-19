@@ -16,15 +16,31 @@ import {
 import {
   addApplicationNote,
   createApplication,
+  debriefLists,
   findDuplicates,
   findOrCreateStatus,
   moveApplication,
+  removeApplicationNote,
   removeStatus,
+  saveDebrief,
   updateApplication,
   type Application,
+  type ApplicationEvent,
   type ApplicationStatus,
+  type Debrief,
   type DuplicateMatch,
 } from '../domain/applications'
+import {
+  applicationsTo,
+  companyNoteKinds,
+  companyOf,
+  deleteCompany,
+  deleteCompanyNote,
+  findCompany,
+  saveCompany,
+  saveCompanyNote,
+  type Company,
+} from '../domain/companies'
 import {
   deleteEntry,
   deleteExperiences,
@@ -43,6 +59,8 @@ import type { DocumentStore } from '../ports/documentStore'
 import { documentView, patchDocument, type EditableDocument } from './document'
 import { APP_URL, CV_GUIDE, MODEL_GUIDE } from './guide'
 import { reviewCv } from '../domain/cvReview'
+import { DEFAULT_ACCENT, accentColors, fontIds } from '../domain/fonts'
+import { templateIds } from '../domain/templates'
 import type { PatchOperation } from './jsonPatch'
 
 export type ToolContext = { store: DocumentStore; now?: () => Date }
@@ -51,6 +69,60 @@ const json = (data: unknown) => ({ content: [{ type: 'text' as const, text: JSON
 const levelLabel: Record<number, string> = { 0: 'sin experiencia', 1: 'personal', 2: 'profesional' }
 const levelValue = { 'sin experiencia': 0, personal: 1, profesional: 2 } as const
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Usá YYYY-MM-DD')
+const noteDate = z.union([z.string().regex(/^\d{4}(-\d{2}(-\d{2})?)?$/, 'Usá YYYY-MM-DD, YYYY-MM o YYYY'), z.literal('')])
+const momentInput = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}(T[\d:.]+(Z|[+-]\d{2}:?\d{2})?)?$/, 'Usá YYYY-MM-DD o una fecha ISO')
+const listInput = z.array(z.string())
+const knownNoteKinds = companyNoteKinds.map((item) => `${item.kind} (${item.hint.toLowerCase()})`).join(', ')
+
+/**
+ * When something happened: an ISO moment, or a day (`yyyy-mm-dd`) taken as its midday UTC so it
+ * shows as that day anywhere. Today's midday may still be ahead, which would make it look
+ * scheduled: then it is now.
+ */
+function pastMoment(value: string, now: Date): string {
+  const day = /^\d{4}-\d{2}-\d{2}$/.test(value)
+  const time = Date.parse(day ? `${value}T12:00:00.000Z` : value)
+  if (Number.isNaN(time)) throw new Error(`Fecha inválida: ${value}`)
+  if (day && time > now.getTime() && value === now.toISOString().slice(0, 10)) return now.toISOString()
+  return new Date(time).toISOString()
+}
+
+/** The debrief without empty parts, for compact answers. */
+function debriefView(event: ApplicationEvent, statusById: Map<string, ApplicationStatus>) {
+  const debrief: Partial<Debrief> = event.debrief ?? {}
+  return {
+    debrief_id: event.id,
+    step: statusById.get(event.statusId)?.name ?? event.statusId,
+    at: event.at,
+    how_it_went: event.text || undefined,
+    rating: debrief.rating ?? undefined,
+    ...Object.fromEntries(debriefLists.flatMap((key) => (debrief[key]?.length ? [[key, debrief[key]]] : []))),
+  }
+}
+
+function companyView(company: Company) {
+  return {
+    company_id: company.id,
+    name: company.name,
+    website: company.website || undefined,
+    logo: company.logo || undefined,
+    about: company.about || undefined,
+    mission: company.mission || undefined,
+    vision: company.vision || undefined,
+    values: company.values.length > 0 ? company.values : undefined,
+    extra: company.extra,
+    notes: company.notes.map((note) => ({
+      note_id: note.id,
+      kind: note.kind,
+      date: note.date || undefined,
+      text: note.text,
+      source: note.source || undefined,
+      ...(note.extra ? { extra: note.extra } : {}),
+    })),
+  }
+}
 
 const documentParts = [
   'profile',
@@ -62,6 +134,7 @@ const documentParts = [
   'activeCvId',
   'applications',
   'applicationStatuses',
+  'companies',
 ] as const satisfies readonly (keyof EditableDocument)[]
 
 const patchOperation = z.object({
@@ -106,6 +179,13 @@ function duplicateReport(matches: DuplicateMatch[], statusById: Map<string, Appl
     ...summary(application, statusById, now),
     status_kind: statusById.get(application.statusId)?.kind,
   }))
+}
+
+/** What get_application and create_application say about the company. */
+function companyBrief(document: ResumeDocument, application: Application) {
+  const company = companyOf(document.companies, application)
+  if (!company) return { saved: false, hint: 'Nothing saved about this company yet: research it and save it with save_company and save_company_note.' }
+  return { saved: true, company_id: company.id, name: company.name, about: company.about || undefined, notes: company.notes.length, more: 'get_company' }
 }
 
 function cvAttachment(document: ResumeDocument, attachment: Application['attachment']) {
@@ -256,11 +336,20 @@ export function registerTools(server: McpServer, { store, now: clock = () => new
         ...summary(application, statusById, now),
         posting: application.posting || undefined,
         cv: cvAttachment(document, application.attachment),
-        history: application.events.map((event) => ({
-          at: event.at,
-          step: statusById.get(event.statusId)?.name ?? event.statusId,
-          ...(event.kind === 'status' ? { moved_to: statusById.get(event.statusId)?.name } : { note: event.text, note_id: event.id }),
-        })),
+        company: companyBrief(document, application),
+        history: application.events.map((event) =>
+          event.kind === 'status'
+            ? { at: event.at, step: statusById.get(event.statusId)?.name ?? event.statusId, moved_to: statusById.get(event.statusId)?.name }
+            : event.kind === 'debrief'
+              ? { kind: 'debrief', ...debriefView(event, statusById) }
+              : {
+                  at: event.at,
+                  step: statusById.get(event.statusId)?.name ?? event.statusId,
+                  ...(event.kind !== 'note' ? { kind: event.kind } : {}),
+                  note: event.text,
+                  note_id: event.id,
+                },
+        ),
         similar: duplicateReport(findDuplicates(document.applications, application, application.id), statusById, now),
       })
     },
@@ -557,6 +646,7 @@ export function registerTools(server: McpServer, { store, now: clock = () => new
       return json({
         created: true,
         application: summary(application, statusById, now),
+        company: companyBrief(document, application),
         other_applications_at_company: duplicateReport(matches, statusById, now),
       })
     },
@@ -662,6 +752,178 @@ export function registerTools(server: McpServer, { store, now: clock = () => new
     },
   )
 
+  server.registerTool(
+    'save_debrief',
+    {
+      title: 'Contar cómo fue',
+      description:
+        "Writes down how a step of an application went, in the user's words (a call, an interview, a challenge review): how it went, rating, who was there, what they asked, what the user said and did not say, what they liked and their doubts. Goes in the application's current step unless stage says otherwise. Pass debrief_id to change one; only the fields sent change (lists are replaced).",
+      inputSchema: z.object({
+        application_id: z.string(),
+        debrief_id: z.string().optional().describe('Debrief to change (from get_application)'),
+        stage: z.string().optional().describe('Status name or id; default: the current one'),
+        at: momentInput.optional().describe('When it happened: YYYY-MM-DD or ISO; default now'),
+        how_it_went: z.string().optional().describe('Summary in the user’s words'),
+        rating: z.number().int().min(1).max(5).nullable().optional().describe('How it felt: 1 mal … 5 excelente'),
+        people: listInput.optional().describe('Who was there: "Laura (RRHH)", "el CTO"'),
+        asked: listInput.optional().describe('What they asked or asked for'),
+        said: listInput.optional().describe('What the user answered or said: points made, numbers given'),
+        unsaid: listInput.optional().describe('What the user did not say, held back or forgot'),
+        liked: listInput.optional().describe('What they liked'),
+        concerns: listInput.optional().describe('Their doubts or objections, what did not land'),
+      }),
+      annotations: { idempotentHint: true },
+    },
+    async ({ application_id, debrief_id, stage, at, how_it_went, ...details }) => {
+      const document = await open()
+      const now = clock()
+      const application = findApplication(document, application_id)
+      const statusId = stage ? resolveStatus(document.applicationStatuses, stage).id : undefined
+      const { application: next, eventId } = saveDebrief(
+        application,
+        { id: debrief_id, statusId, at: at ? pastMoment(at, now) : undefined, text: how_it_went, ...details },
+        now,
+      )
+      await store.save({ ...document, applications: document.applications.map((item) => (item.id === application_id ? next : item)) })
+      return json(debriefView(next.events.find((event) => event.id === eventId)!, statusesOf(document)))
+    },
+  )
+
+  server.registerTool(
+    'delete_event',
+    {
+      title: 'Borrar nota o bitácora',
+      description: "Deletes a note, a debrief or a scheduled event from an application's history. Status changes stay: they are the history. Ask the user first.",
+      inputSchema: z.object({ application_id: z.string(), event_id: z.string().describe('note_id or debrief_id from get_application') }),
+      annotations: { destructiveHint: true },
+    },
+    async ({ application_id, event_id }) => {
+      const document = await open()
+      const application = findApplication(document, application_id)
+      const next = removeApplicationNote(application, event_id, clock())
+      if (next === application) throw new Error(`No hay una nota o bitácora ${event_id} en esta postulación (los cambios de estado no se borran).`)
+      await store.save({ ...document, applications: document.applications.map((item) => (item.id === application_id ? next : item)) })
+      return json({ deleted: event_id })
+    },
+  )
+
+  // -------------------------------------------------------------------------
+  // Companies
+  // -------------------------------------------------------------------------
+
+  server.registerTool(
+    'get_company',
+    {
+      title: 'Ver empresa',
+      description:
+        "Everything about a company (by name or id): what it does, mission, vision, values, extra data, notes (news, layoffs, hiring, other openings, others' interviews…), and the user's applications to it with how each step went (debriefs). Use it to prepare an interview or before researching again.",
+      inputSchema: z.object({ company: z.string().describe('Company name or company_id') }),
+      annotations: { readOnlyHint: true },
+    },
+    async ({ company }) => {
+      const document = await open()
+      const now = clock()
+      const statusById = statusesOf(document)
+      const found = findCompany(document.companies, company)
+      const name = found?.name ?? company
+      const applications = applicationsTo(document.applications, name)
+      if (!found && applications.length === 0) throw new Error(`No hay nada de ${company} todavía: guardalo con save_company.`)
+      return json({
+        ...(found ? companyView(found) : { company_id: null, name, saved: false, hint: 'Nothing saved yet: research it and use save_company / save_company_note.' }),
+        applications: applications.map((application) => ({
+          ...summary(application, statusById, now),
+          debriefs: application.events.filter((event) => event.kind === 'debrief').map((event) => debriefView(event, statusById)),
+        })),
+      })
+    },
+  )
+
+  server.registerTool(
+    'save_company',
+    {
+      title: 'Guardar empresa',
+      description:
+        "Creates or updates what the user knows about a company: website, logo, what it does, mission, vision, values and extra data (industry, size, headquarters, founded, funding, stack, rating…). Found by company_id or by name (applications to it are matched by name). Only the fields sent change; extra merges (null removes a key). Renaming renames its applications. Save facts with dates (news, layoffs…) as notes with save_company_note. Never invent: use what you read, and say where.",
+      inputSchema: z.object({
+        company_id: z.string().optional(),
+        name: z.string().optional().describe('Required to create; with company_id, renames'),
+        website: z.string().optional(),
+        logo: z.string().optional().describe('URL of a square logo image, if you have a reliable one; otherwise the website icon is used'),
+        about: z.string().optional().describe('What they do: product, customers, stage, size; a few lines'),
+        mission: z.string().optional(),
+        vision: z.string().optional(),
+        values: listInput.optional(),
+        extra: z.record(z.string(), z.unknown()).optional(),
+      }),
+      annotations: { idempotentHint: true },
+    },
+    async ({ company_id, ...input }) => {
+      const document = await open()
+      const { document: next, companyId, created } = saveCompany(document, { id: company_id, ...input })
+      await store.save(next)
+      const company = next.companies.find((item) => item.id === companyId)!
+      return json({ company_id: companyId, created, name: company.name, applications: applicationsTo(next.applications, company.name).length })
+    },
+  )
+
+  server.registerTool(
+    'save_company_note',
+    {
+      title: 'Guardar info de la empresa',
+      description: `Writes down one thing learned about a company, with when it happened and where it comes from. kind: ${knownNoteKinds}, or any other word. The company is found by name or id, and created when missing. Pass note_id to change a note; only the fields sent change.`,
+      inputSchema: z.object({
+        company: z.string().describe('Company name or company_id'),
+        note_id: z.string().optional(),
+        kind: z.string().optional().describe('Default: news'),
+        date: noteDate.optional().describe('When it happened: YYYY-MM-DD, YYYY-MM or YYYY'),
+        text: z.string().optional().describe('Required for a new note'),
+        source: z.string().optional().describe('Link, or who said it'),
+        extra: z.record(z.string(), z.unknown()).optional(),
+      }),
+      annotations: { idempotentHint: true },
+    },
+    async ({ company, note_id, ...input }) => {
+      const document = await open()
+      const { document: next, companyId, noteId } = saveCompanyNote(document, company, { id: note_id, ...input }, clock())
+      await store.save(next)
+      return json({ company_id: companyId, note_id: noteId })
+    },
+  )
+
+  server.registerTool(
+    'delete_company_note',
+    {
+      title: 'Borrar info de la empresa',
+      description: 'Deletes a note about a company. Ask the user first.',
+      inputSchema: z.object({ company: z.string().describe('Company name or company_id'), note_id: z.string() }),
+      annotations: { destructiveHint: true },
+    },
+    async ({ company, note_id }) => {
+      const document = await open()
+      const found = findCompany(document.companies, company)
+      if (!found?.notes.some((note) => note.id === note_id)) throw new Error(`No existe la nota ${note_id} en ${company}.`)
+      await store.save(deleteCompanyNote(document, found.id, note_id))
+      return json({ deleted: note_id })
+    },
+  )
+
+  server.registerTool(
+    'delete_company',
+    {
+      title: 'Borrar empresa',
+      description: 'Deletes what was saved about a company (info and notes). Its applications stay. Ask the user first.',
+      inputSchema: z.object({ company: z.string().describe('Company name or company_id') }),
+      annotations: { destructiveHint: true },
+    },
+    async ({ company }) => {
+      const document = await open()
+      const found = findCompany(document.companies, company)
+      if (!found) throw new Error(`No hay nada guardado de ${company}.`)
+      await store.save(deleteCompany(document, found.id))
+      return json({ deleted: found.name, notes: found.notes.length })
+    },
+  )
+
   // -------------------------------------------------------------------------
   // CVs
   // -------------------------------------------------------------------------
@@ -686,8 +948,8 @@ export function registerTools(server: McpServer, { store, now: clock = () => new
           .describe('Only these entries (roles, studies, projects…). Default: every role and study, plus entries of other sections that have chosen experiences.'),
         section_ids: z.array(z.string()).optional().describe('Other sections to include (ids or names), in order. Default: those with chosen experiences.'),
         include_education: z.boolean().default(true),
-        template: z.enum(['classic', 'timeline', 'sidebar']).optional(),
-        font: z.enum(['times', 'georgia', 'palatino', 'sans']).optional(),
+        template: z.enum(templateIds).optional().describe('classic or modern (single column) are the safest for screening'),
+        font: z.enum(fontIds).optional(),
         application_id: z.string().optional().describe('Attach the generated version to this application'),
       }),
     },
@@ -735,7 +997,7 @@ export function registerTools(server: McpServer, { store, now: clock = () => new
     'update_cv',
     {
       title: 'Editar CV',
-      description: "Changes a CV's name, target job, summary or style (template, font, size, spacing, margins, paper, skills format). Call build_cv_version afterwards to regenerate it.",
+      description: "Changes a CV's name, target job, summary or style (template, font, size, spacing, margins, paper, skills format, accent color, section order). Call build_cv_version afterwards to regenerate it.",
       inputSchema: z.object({
         cv_id: z.string(),
         title: z.string().optional(),
@@ -743,17 +1005,27 @@ export function registerTools(server: McpServer, { store, now: clock = () => new
         company: z.string().optional(),
         posting: z.string().optional(),
         summary: z.string().optional(),
-        template: z.enum(['classic', 'timeline', 'sidebar']).optional(),
-        font: z.enum(['times', 'georgia', 'palatino', 'sans']).optional(),
+        template: z.enum(templateIds).optional().describe('classic or modern (single column) are the safest for screening'),
+        font: z.enum(fontIds).optional(),
         font_size: z.union([z.literal(9), z.literal(10), z.literal(11), z.literal(12), z.literal(14)]).optional(),
         line_height: z.union([z.literal(1), z.literal(1.15), z.literal(1.5), z.literal(2)]).optional(),
         margins: z.enum(['narrow', 'normal', 'wide']).optional(),
         page_size: z.enum(['letter', 'a4']).optional(),
         skills_format: z.enum(['list', 'comma']).optional(),
+        accent_color: z
+          .string()
+          .regex(/^#[0-9a-fA-F]{6}$/)
+          .nullable()
+          .optional()
+          .describe(`Color of the name, headings and rules; null for none. Suggested: ${accentColors.map((color) => `${color.id} (${color.name})`).join(', ')}`),
+        section_order: z
+          .array(z.string())
+          .optional()
+          .describe('Body sections in display order, by id: experience, education, skills and other section ids. Missing ones follow.'),
       }),
       annotations: { idempotentHint: true },
     },
-    async ({ cv_id, template, font, font_size, line_height, margins, page_size, skills_format, ...meta }) => {
+    async ({ cv_id, template, font, font_size, line_height, margins, page_size, skills_format, accent_color, section_order, ...meta }) => {
       const document = await open()
       if (!document.cvs.some((cv) => cv.id === cv_id)) throw new Error(`No existe el CV ${cv_id}.`)
       const patch = Object.fromEntries(
@@ -766,6 +1038,8 @@ export function registerTools(server: McpServer, { store, now: clock = () => new
           marginId: margins,
           pageSize: page_size,
           skillsFormat: skills_format,
+          accentColor: accent_color === null ? DEFAULT_ACCENT : accent_color?.toLowerCase(),
+          sectionOrder: section_order,
         }).filter(([, value]) => value !== undefined),
       )
       await store.save({ ...document, cvs: document.cvs.map((cv) => (cv.id === cv_id ? { ...cv, ...patch } : cv)) })
@@ -840,6 +1114,48 @@ export function registerTools(server: McpServer, { store, now: clock = () => new
       argsSchema: z.object({ aviso: z.string().describe('Link del aviso o el texto pegado') }),
     },
     ({ aviso }) => prompt(`Armemos el CV para ${aviso}. Investigá la empresa, seguí cv_guidelines y revisá el review de build_cv antes de mostrármelo.`),
+  )
+
+  server.registerPrompt(
+    'como-me-fue',
+    {
+      title: 'Contar cómo me fue',
+      description: 'Contale cómo fue una entrevista o una call y lo guarda en la bitácora de esa etapa.',
+      argsSchema: z.object({
+        empresa: z.string(),
+        relato: z.string().describe('Qué pasó: qué te preguntaron, qué dijiste y qué no, qué les gustó…'),
+      }),
+    },
+    ({ empresa, relato }) =>
+      prompt(
+        `Te cuento cómo me fue con ${empresa}: ${relato}\n\nGuardalo en la bitácora de esa etapa en Resume (qué me preguntaron, qué dije y qué no, qué les gustó, qué dudas tuvieron, con quién hablé). Si pasé a otra etapa, movela. Preguntame lo importante que falte.`,
+      ),
+  )
+
+  server.registerPrompt(
+    'investigar-empresa',
+    {
+      title: 'Investigar una empresa',
+      description: 'Busca la empresa y guarda a qué se dedica, misión, visión, valores y novedades con fecha y fuente.',
+      argsSchema: z.object({ empresa: z.string() }),
+    },
+    ({ empresa }) =>
+      prompt(
+        `Investigá ${empresa} y guardá en Resume lo que encuentres: web, a qué se dedica, misión, visión, valores, tamaño y sede; y como notas con fecha y fuente: despidos, contrataciones, inversión, otros puestos abiertos, cómo son sus entrevistas según otros. No inventes nada.`,
+      ),
+  )
+
+  server.registerPrompt(
+    'preparar-entrevista',
+    {
+      title: 'Preparar la próxima etapa',
+      description: 'Arma la preparación con lo que sabés de la empresa y lo que contaste de las etapas anteriores.',
+      argsSchema: z.object({ empresa: z.string() }),
+    },
+    ({ empresa }) =>
+      prompt(
+        `Preparame para la próxima etapa con ${empresa}. Usá lo que tenemos en Resume (get_company: la empresa, sus novedades y mis bitácoras de las etapas anteriores): qué me pueden preguntar, qué conviene contar, qué no dije la otra vez y debería, y qué preguntarles yo.`,
+      ),
   )
 
   server.registerPrompt(

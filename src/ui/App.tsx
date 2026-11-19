@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useRef, useState, type DragEvent as ReactDragEvent, type PointerEvent as ReactPointerEvent } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState, type DragEvent as ReactDragEvent, type PointerEvent as ReactPointerEvent } from 'react'
 import {
   addEdge,
   applyEdgeChanges,
@@ -22,6 +22,7 @@ import {
 import { Applications, type TrackerData } from './components/applications/Applications'
 import { updateApplication, type Application } from '../domain/applications'
 import { ResumePreview } from './components/ResumePreview'
+import { CvEditor } from './components/editor/CvEditor'
 import { Sidebar } from './components/Sidebar'
 import { downloadDoc, downloadPdf } from './download'
 import { ExperienceMaster } from './components/Master'
@@ -29,6 +30,7 @@ import { Library } from './components/Templates'
 import {
   activeCv,
   arrangeNodes,
+  buildResume,
   cloneRoleGraph,
   nextPosition,
   roleHasExperience,
@@ -51,6 +53,7 @@ import {
 import type { DocumentStore } from '../ports/documentStore'
 import { useDocumentSync } from './useDocumentSync'
 import { deleteExperiences, saveExperience, sectionsView } from '../domain/content'
+import { toggleCvSection, withEnabledSectionNodes } from '../domain/cvEditing'
 import type { OAuthConsent } from '../ports/auth'
 import { ConnectAssistant, Onboarding } from './components/assistant/ConnectAssistant'
 import { useConnectedApps } from './components/assistant/useConnectedApps'
@@ -82,6 +85,18 @@ type DockEdge = 'left' | 'right' | 'top' | 'bottom'
 type WorkspaceLayout = { main: [MainPane, MainPane]; props: DockEdge }
 
 const layoutKey = 'resume.layout.v1'
+const editorModeKey = 'resume.editorMode.v1'
+
+/** The visual editor, or the graph (the CV's experiences connected by hand). */
+type EditorMode = 'editor' | 'graph'
+
+function loadEditorMode(): EditorMode {
+  try {
+    return localStorage.getItem(editorModeKey) === 'graph' ? 'graph' : 'editor'
+  } catch {
+    return 'editor'
+  }
+}
 
 /** Stand-in that keeps render paths total while no CV exists. Never stored, never shown. */
 const NO_CV: Cv = {
@@ -160,6 +175,7 @@ export default function App({ initialDocument, store, account, notice, assistant
   const [fitToken, setFitToken] = useState(0)
   const [previewShare, setPreviewShare] = useState(45)
   const [layout, setLayout] = useState<WorkspaceLayout>(loadLayout)
+  const [editorMode, setEditorMode] = useState<EditorMode>(loadEditorMode)
   const [dragging, setDragging] = useState<ViewId | null>(null)
   const [dropPane, setDropPane] = useState<MainPane | null>(null)
   const [dropEdge, setDropEdge] = useState<DockEdge | null>(null)
@@ -173,6 +189,14 @@ export default function App({ initialDocument, store, account, notice, assistant
   useEffect(() => {
     localStorage.setItem(layoutKey, JSON.stringify(layout))
   }, [layout])
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(editorModeKey, editorMode)
+    } catch {
+      /* ignore */
+    }
+  }, [editorMode])
 
   useEffect(() => {
     if (!metadataOpen) return
@@ -219,6 +243,13 @@ export default function App({ initialDocument, store, account, notice, assistant
   const cv = openedCv ?? NO_CV
   const snapshot = shownSnapshot(cv, selectedVersionId)
   const versionNote = olderVersionNote(cv, selectedVersionId)
+  // The editor shows the CV live: built from its content on every change (versions are fixed copies).
+  const draft = useMemo(
+    () => (inWorkspace ? buildResume(doc.nodes, doc.edges, cv.summary, { sections: doc.sections, bank: doc.bank }) : null),
+    [inWorkspace, doc.nodes, doc.edges, cv.summary, doc.sections, doc.bank],
+  )
+  const inEditor = inWorkspace && editorMode === 'editor'
+  const editorShown = inEditor ? cv.versions.find((version) => version.id === selectedVersionId)?.snapshot ?? draft : null
   const split = views.preview && views.graph
 
   const onNodesChange: OnNodesChange<ResumeNode> = (changes) => {
@@ -491,7 +522,7 @@ export default function App({ initialDocument, store, account, notice, assistant
   }
 
   function openCv(id: string) {
-    setDoc((current) => openCvGraph(current, id))
+    setDoc((current) => withEnabledSectionNodes(openCvGraph(current, id)))
     setSelectedVersionId(null)
     setMetadataOpen(false)
     closeComposer()
@@ -515,7 +546,7 @@ export default function App({ initialDocument, store, account, notice, assistant
         ),
       }
     })
-    setSelectedVersionId(versionId)
+    setSelectedVersionId(editorMode === 'editor' ? null : versionId)
     setMetadataOpen(false)
     closeComposer()
     setViews((current) => ({ ...current, preview: true, graph: true }))
@@ -530,7 +561,7 @@ export default function App({ initialDocument, store, account, notice, assistant
   function changeTracker(update: (current: TrackerData) => TrackerData) {
     setDoc((current) => ({
       ...current,
-      ...update({ applications: current.applications, applicationStatuses: current.applicationStatuses }),
+      ...update({ applications: current.applications, applicationStatuses: current.applicationStatuses, companies: current.companies }),
     }))
   }
 
@@ -609,44 +640,7 @@ export default function App({ initialDocument, store, account, notice, assistant
   }
 
   function toggleSection(id: string) {
-    setDoc((current) => {
-      const cv = current.cvs.find((item) => item.id === current.activeCvId)
-      const turningOn = cv ? !cv.enabledSections.includes(id) : false
-      let nodes = current.nodes
-      if (turningOn && id === 'personal' && !nodes.some((node) => node.type === 'person')) {
-        nodes = [
-          ...nodes,
-          {
-            id: crypto.randomUUID(),
-            type: 'person' as const,
-            position: { x: 48, y: 48 },
-            data: { ...current.profile },
-          },
-        ]
-      }
-      if (turningOn && id === 'education' && !nodes.some((node) => node.type === 'education')) {
-        nodes = [
-          ...nodes,
-          {
-            id: crypto.randomUUID(),
-            type: 'education' as const,
-            position: { x: 400, y: 48 },
-            data: { entries: [] },
-          },
-        ]
-      }
-      return {
-        ...current,
-        nodes,
-        cvs: current.cvs.map((item) => {
-          if (item.id !== current.activeCvId) return item
-          const enabled = item.enabledSections.includes(id)
-            ? item.enabledSections.filter((section) => section !== id)
-            : [...item.enabledSections, id]
-          return { ...item, enabledSections: enabled }
-        }),
-      }
-    })
+    setDoc((current) => toggleCvSection(current, id))
   }
 
   function updateTemplate(templateId: TemplateId) {
@@ -661,6 +655,11 @@ export default function App({ initialDocument, store, account, notice, assistant
     setDoc((current) => buildCvVersion(current, current.activeCvId, { versionId }).document)
     setSelectedVersionId(versionId)
     setViews((current) => ({ ...current, preview: true }))
+  }
+
+  /** The editor's "Guardar versión": a fixed copy of the CV, while the editor keeps showing the draft. */
+  function saveVersion() {
+    setDoc((current) => buildCvVersion(current, current.activeCvId).document)
   }
 
   function toggleView(id: ViewId) {
@@ -815,6 +814,8 @@ export default function App({ initialDocument, store, account, notice, assistant
           marginId={cv.marginId}
           pageSize={cv.pageSize}
           skillsFormat={cv.skillsFormat ?? 'list'}
+          accentColor={cv.accentColor}
+          sectionOrder={cv.sectionOrder}
           enabledSections={cv.enabledSections}
           sections={doc.sections}
           blocks={snapshot?.blocks ?? []}
@@ -907,7 +908,7 @@ export default function App({ initialDocument, store, account, notice, assistant
       {assistant && !inWorkspace && isEmptyAccount(doc) ? (
         <Onboarding connected={assistantConnected} onConnect={() => setAssistantOpen(true)} />
       ) : null}
-      {inWorkspace ? (
+      {inWorkspace && !inEditor ? (
       <header className="topbar">
         <div className="cv-anchor" ref={metadataRef}>
           <button
@@ -938,6 +939,14 @@ export default function App({ initialDocument, store, account, notice, assistant
           ) : null}
         </div>
         <div className="topbar-gap" />
+        <div className="cv-editor-mode" role="group" aria-label="Modo">
+          <button type="button" aria-pressed="false" onClick={() => setEditorMode('editor')}>
+            Editor
+          </button>
+          <button type="button" className="is-current" aria-pressed="true">
+            Grafo
+          </button>
+        </div>
         <details ref={viewsRef} className="views-anchor">
           <summary className="view-toggle views-trigger" aria-label="Vistas"><ViewsIcon /><span>Vistas</span></summary>
           <div className="view-toggles views-menu" role="toolbar" aria-label="Vistas disponibles">
@@ -1008,7 +1017,7 @@ export default function App({ initialDocument, store, account, notice, assistant
                 onClick={() => {
                   if (!exportSnapshot) return
                   setDownloadOpen(false)
-                  downloadDoc(cv.title, exportSnapshot, cv.enabledSections, doc.sections)
+                  downloadDoc(cv.title, exportSnapshot, cv.enabledSections, doc.sections, cv.sectionOrder)
                 }}
               >
                 DOC
@@ -1025,6 +1034,7 @@ export default function App({ initialDocument, store, account, notice, assistant
         <Applications
           applications={doc.applications}
           statuses={doc.applicationStatuses}
+          companies={doc.companies}
           cvs={doc.cvs}
           onChange={changeTracker}
           onOpenCv={openCvVersion}
@@ -1073,6 +1083,48 @@ export default function App({ initialDocument, store, account, notice, assistant
           onCreate={createCv}
           onDelete={deleteCv}
         />
+      ) : inEditor && draft ? (
+        <>
+          <CvEditor
+            doc={doc}
+            cv={cv}
+            draft={draft}
+            setDoc={setDoc}
+            saveStatus={saveStatus}
+            onRetrySave={retrySave}
+            selectedVersionId={selectedVersionId}
+            onSelectVersion={setSelectedVersionId}
+            onSaveVersion={saveVersion}
+            onBack={() => {
+              setHomeSection('projects')
+              setScreen('home')
+            }}
+            onGraph={() => {
+              setSelectedVersionId(null)
+              setEditorMode('graph')
+            }}
+            assistant={assistant ? { connected: assistantConnected, onConnect: () => setAssistantOpen(true) } : undefined}
+          />
+          {editorShown ? (
+            <div className="print-source" aria-hidden="true">
+              <ResumePreview
+                snapshot={editorShown}
+                templateId={cv.templateId}
+                fontId={cv.fontId}
+                fontSize={cv.fontSize}
+                lineHeight={cv.lineHeight}
+                marginId={cv.marginId}
+                pageSize={cv.pageSize}
+                skillsFormat={cv.skillsFormat ?? 'list'}
+                accentColor={cv.accentColor}
+                sectionOrder={cv.sectionOrder}
+                enabledSections={cv.enabledSections}
+                sections={doc.sections}
+                blocks={editorShown.blocks ?? []}
+              />
+            </div>
+          ) : null}
+        </>
       ) : (
       <>
       <main ref={workspaceRef} className={split ? `workspace is-split is-props-${layout.props}` : `workspace is-props-${layout.props}`}>
@@ -1127,6 +1179,8 @@ export default function App({ initialDocument, store, account, notice, assistant
             marginId={cv.marginId}
             pageSize={cv.pageSize}
             skillsFormat={cv.skillsFormat ?? 'list'}
+            accentColor={cv.accentColor}
+            sectionOrder={cv.sectionOrder}
             enabledSections={cv.enabledSections}
             sections={doc.sections}
             blocks={snapshot?.blocks ?? []}

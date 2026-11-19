@@ -7,6 +7,7 @@
 import { experienceCatalog } from './catalog'
 import { normalizePhrase, seedExperiences, type Experience } from './experiences'
 import type { Cv, Snapshot } from './model'
+import { isSingleColumn } from './templates'
 
 export type CvFinding = { kind: string; message: string }
 
@@ -33,7 +34,20 @@ const commonTerms = [
 ]
 
 const weakOpenings = /^(responsible for|in charge of|worked on|helped|participated|was part of|responsable de|encargad[oa] de|particip[eé]|trabaj[eé] en|ayud[eé]|fui parte)/i
-const hasResult = /\d|%|\$|€|£|x\b/i
+const resultPattern = /\d|%|\$|€|£|x\b/i
+
+/** An achievement that shows a measurable result (a number, %, money, scale). */
+export function hasResult(text: string): boolean {
+  return resultPattern.test(text)
+}
+
+/** An achievement that opens with a duty ("Responsable de…") instead of an action verb. */
+export function hasWeakOpening(text: string): boolean {
+  return weakOpenings.test(text.trim())
+}
+
+/** Achievements longer than this read as more than two lines. */
+export const LONG_ACHIEVEMENT = 220
 
 function vocabulary(bank: Experience[]): string[] {
   const terms = new Map<string, string>()
@@ -56,13 +70,9 @@ function mentions(haystack: string, term: string): boolean {
   return new RegExp(`(^|[^a-z0-9])${needle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}([^a-z0-9]|$)`).test(haystack)
 }
 
-export function reviewCv(cv: Cv, snapshot: Snapshot, bank: Experience[], posting = cv.posting): CvReview {
-  const findings: CvFinding[] = []
-  const bullets = snapshot.roles.flatMap((role) => role.bullets.map((bullet) => bullet.text))
+/** Rough page count of a built CV: about 46 lines per page, 95 characters per line. */
+export function estimatePages(snapshot: Snapshot): number {
   const blocks = snapshot.blocks ?? []
-  const blockBullets = blocks.flatMap((block) => block.entries.flatMap((entry) => entry.bullets ?? []))
-
-  // Length: roughly 46 lines per page.
   const lineCount = (text: string, width = 95) => Math.max(1, Math.ceil(text.length / width))
   const lines =
     5 +
@@ -71,7 +81,34 @@ export function reviewCv(cv: Cv, snapshot: Snapshot, bank: Experience[], posting
     (snapshot.education?.length ?? 0) * 2 +
     blocks.reduce((total, block) => total + 2 + block.entries.reduce((sum, entry) => sum + 1 + (entry.bullets ?? []).reduce((acc, text) => acc + lineCount(text), 0), 0), 0) +
     3
-  const estimatedPages = Math.round((lines / 46) * 10) / 10
+  return Math.round((lines / 46) * 10) / 10
+}
+
+/** The posting's known terms, split by whether this CV shows them and whether the bank backs them. */
+export function keywordMatch(snapshot: Snapshot, bank: Experience[], posting: string): NonNullable<CvReview['keywords']> | undefined {
+  const postingText = normalizePhrase(posting ?? '')
+  if (!postingText) return undefined
+  const bullets = snapshot.roles.flatMap((role) => role.bullets.map((bullet) => bullet.text))
+  const blockBullets = (snapshot.blocks ?? []).flatMap((block) => block.entries.flatMap((entry) => entry.bullets ?? []))
+  const cvText = normalizePhrase(
+    [snapshot.summary, ...snapshot.roles.map((role) => role.title), ...bullets, ...blockBullets, ...(snapshot.skills ?? []), ...snapshot.roles.flatMap((role) => role.bullets.flatMap((bullet) => bullet.skills))].join(' \n '),
+  )
+  const bankText = normalizePhrase(bank.flatMap((item) => [item.text, ...item.skills]).join(' \n '))
+  const asked = vocabulary(bank).filter((term) => mentions(postingText, term))
+  return {
+    covered: asked.filter((term) => mentions(cvText, term)),
+    backedButMissing: asked.filter((term) => !mentions(cvText, term) && mentions(bankText, term)),
+    notInExperience: asked.filter((term) => !mentions(cvText, term) && !mentions(bankText, term)),
+  }
+}
+
+export function reviewCv(cv: Cv, snapshot: Snapshot, bank: Experience[], posting = cv.posting): CvReview {
+  const findings: CvFinding[] = []
+  const bullets = snapshot.roles.flatMap((role) => role.bullets.map((bullet) => bullet.text))
+  const blocks = snapshot.blocks ?? []
+  const blockBullets = blocks.flatMap((block) => block.entries.flatMap((entry) => entry.bullets ?? []))
+
+  const estimatedPages = estimatePages(snapshot)
   if (estimatedPages > 2) findings.push({ kind: 'length', message: `About ${estimatedPages} pages: keep it to 1–2. Cut older or less relevant roles and experiences.` })
 
   if (!snapshot.summary) {
@@ -87,38 +124,27 @@ export function reviewCv(cv: Cv, snapshot: Snapshot, bank: Experience[], posting
     if (role.bullets.length > 6) findings.push({ kind: 'too-many', message: `"${role.title}" has ${role.bullets.length} achievements: keep the 3–6 most relevant to this job.` })
   }
 
-  const noResult = [...bullets, ...blockBullets].filter((text) => !hasResult.test(text))
+  const noResult = [...bullets, ...blockBullets].filter((text) => !hasResult(text))
   if (noResult.length > 0) {
     findings.push({
       kind: 'results',
       message: `${noResult.length} achievement(s) without a measurable result (number, %, scale). Add one if it is true, e.g. ${noResult.slice(0, 3).map((text) => `"${text}"`).join(', ')}.`,
     })
   }
-  const weak = [...bullets, ...blockBullets].filter((text) => weakOpenings.test(text.trim()))
+  const weak = [...bullets, ...blockBullets].filter(hasWeakOpening)
   if (weak.length > 0) findings.push({ kind: 'wording', message: `Start with a strong action verb and the outcome instead of duties: ${weak.slice(0, 3).map((text) => `"${text}"`).join(', ')}.` })
-  const long = [...bullets, ...blockBullets].filter((text) => text.length > 220)
+  const long = [...bullets, ...blockBullets].filter((text) => text.length > LONG_ACHIEVEMENT)
   if (long.length > 0) findings.push({ kind: 'wording', message: `${long.length} achievement(s) longer than two lines: tighten them.` })
 
   if ((cv.skillsFormat ?? 'list') === 'list' && (snapshot.skills?.length ?? 0) > 8) {
     findings.push({ kind: 'length', message: `${snapshot.skills?.length} skills as a vertical list take a lot of space: use skills_format "comma" (update_cv).` })
   }
-  if (cv.templateId !== 'classic') findings.push({ kind: 'ats', message: `The "${cv.templateId}" template uses columns; some screening software reads them out of order. "classic" (single column) is the safest.` })
+  if (!isSingleColumn(cv.templateId)) findings.push({ kind: 'ats', message: `The "${cv.templateId}" template uses columns; some screening software reads them out of order. "classic" or "modern" (single column) are the safest.` })
   const contact = snapshot.profile.fields.filter((field) => field.value.trim())
   if (!snapshot.profile.name || !contact.some((field) => field.kind === 'email')) findings.push({ kind: 'contact', message: 'Missing name or email in the header.' })
 
-  let keywords: CvReview['keywords']
-  const postingText = normalizePhrase(posting ?? '')
-  if (postingText) {
-    const cvText = normalizePhrase(
-      [snapshot.summary, ...snapshot.roles.map((role) => role.title), ...bullets, ...blockBullets, ...(snapshot.skills ?? []), ...snapshot.roles.flatMap((role) => role.bullets.flatMap((bullet) => bullet.skills))].join(' \n '),
-    )
-    const bankText = normalizePhrase(bank.flatMap((item) => [item.text, ...item.skills]).join(' \n '))
-    const asked = vocabulary(bank).filter((term) => mentions(postingText, term))
-    keywords = {
-      covered: asked.filter((term) => mentions(cvText, term)),
-      backedButMissing: asked.filter((term) => !mentions(cvText, term) && mentions(bankText, term)),
-      notInExperience: asked.filter((term) => !mentions(cvText, term) && !mentions(bankText, term)),
-    }
+  const keywords = keywordMatch(snapshot, bank, posting)
+  if (keywords) {
     if (keywords.backedButMissing.length > 0) {
       findings.push({ kind: 'keywords', message: `The posting asks for ${keywords.backedButMissing.join(', ')} and the bank has experience with it, but this CV does not show it.` })
     }

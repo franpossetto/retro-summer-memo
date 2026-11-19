@@ -32,10 +32,11 @@ import {
   type SnapshotBlock,
   type TextEntry,
 } from './model'
-import { defaultFont, defaultFontSize, defaultMargin, isFontId, isFontSize, isLineSpacing, isMarginId, isPageSize } from './fonts'
+import { defaultFont, defaultFontSize, defaultMargin, isAccentColor, isFontId, isFontSize, isLineSpacing, isMarginId, isPageSize } from './fonts'
 import { readExperiences, type Experience } from './experiences'
 import { readExtra, withExtra } from './extra'
 import { readApplications, readApplicationStatuses, withReferencedStatuses } from './applications'
+import { readCompanies } from './companies'
 import { isTemplateId } from './templates'
 
 /**
@@ -76,6 +77,7 @@ export function parseDocument(value: unknown): ResumeDocument {
     knowledge: readKnowledge(value.knowledge, bank),
     applications,
     applicationStatuses: withReferencedStatuses(pipeline, applications),
+    companies: readCompanies(value.companies),
   }
 }
 
@@ -112,7 +114,9 @@ function cloneGraph(nodes: ResumeNode[]): ResumeNode[] {
   return structuredClone(nodes).map((node) => ({ ...node, selected: false }))
 }
 
-export function readStyle(value: Record<string, unknown>): Pick<Cv, 'fontId' | 'fontSize' | 'lineHeight' | 'marginId' | 'pageSize' | 'skillsFormat'> {
+export function readStyle(
+  value: Record<string, unknown>,
+): Pick<Cv, 'fontId' | 'fontSize' | 'lineHeight' | 'marginId' | 'pageSize' | 'skillsFormat' | 'accentColor' | 'sectionOrder'> {
   const templateId = isTemplateId(value.templateId) ? value.templateId : 'classic'
   return {
     fontId: isFontId(value.fontId) ? value.fontId : defaultFont(templateId),
@@ -121,6 +125,8 @@ export function readStyle(value: Record<string, unknown>): Pick<Cv, 'fontId' | '
     marginId: isMarginId(value.marginId) ? value.marginId : defaultMargin(templateId),
     pageSize: isPageSize(value.pageSize) ? value.pageSize : 'letter',
     ...(value.skillsFormat === 'list' || value.skillsFormat === 'comma' ? { skillsFormat: value.skillsFormat } : {}),
+    ...(isAccentColor(value.accentColor) ? { accentColor: value.accentColor.toLowerCase() } : {}),
+    ...(Array.isArray(value.sectionOrder) ? { sectionOrder: [...new Set(value.sectionOrder.filter((id): id is string => typeof id === 'string' && id !== ''))] } : {}),
   }
 }
 
@@ -149,7 +155,7 @@ function legacyCv(value: Record<string, unknown>): DraftCv {
 
 const cvKeys = [
   'id', 'title', 'position', 'company', 'posting', 'summary', 'templateId', 'fontId', 'fontSize', 'lineHeight',
-  'marginId', 'pageSize', 'skillsFormat', 'enabledSections', 'versions', 'nodes', 'edges', 'graph',
+  'marginId', 'pageSize', 'skillsFormat', 'accentColor', 'sectionOrder', 'enabledSections', 'versions', 'nodes', 'edges', 'graph',
 ]
 
 function parseCv(value: unknown): DraftCv[] {

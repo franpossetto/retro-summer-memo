@@ -94,6 +94,8 @@ const collections: { label: string; ids: boolean; read: (doc: Record<string, unk
   { ids: true, label: 'applications', read: (doc) => list(doc.applications) },
   { ids: true, label: 'applications[].events', read: (doc) => list(doc.applications).flatMap((application) => list(record(application).events)) },
   { ids: true, label: 'applicationStatuses', read: (doc) => list(doc.applicationStatuses) },
+  { ids: true, label: 'companies', read: (doc) => list(doc.companies) },
+  { ids: true, label: 'companies[].notes', read: (doc) => list(doc.companies).flatMap((company) => list(record(company).notes)) },
   // Levels point at bank items by id: never invent one.
   { label: 'knowledge', ids: false, read: (doc) => list(doc.knowledge) },
 ]
@@ -113,6 +115,9 @@ function fillMissing(doc: Record<string, unknown>, now: string) {
   }
   for (const cv of list(doc.cvs)) {
     for (const version of list(record(cv).versions)) if (isRecord(version)) version.createdAt ||= now
+  }
+  for (const company of list(doc.companies)) {
+    for (const note of list(record(company).notes)) if (isRecord(note)) note.addedAt ||= now
   }
 }
 
