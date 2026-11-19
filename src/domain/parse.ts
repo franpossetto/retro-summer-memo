@@ -1,5 +1,6 @@
 import {
   createSeedDocument,
+  PROFILE_SECTIONS,
   defaultEnabledSections,
   defaultSections,
   type BulletNode,
@@ -203,9 +204,19 @@ function keepSinglePerson(nodes: ResumeNode[]): ResumeNode[] {
   })
 }
 
+/**
+ * Drops the heading markers older versions placed on the canvas (experience, skills, and section
+ * nodes for profile sections). Section nodes of other sections are content: they say which entries
+ * of projects, certifications… the CV shows, so they stay.
+ */
 function withoutSectionMarkers(nodes: ResumeNode[]): ResumeNode[] {
   return keepSingle(
-    nodes.filter((node) => node.type !== 'experience' && node.type !== 'section' && node.type !== 'skills'),
+    nodes.filter(
+      (node) =>
+        node.type !== 'experience' &&
+        node.type !== 'skills' &&
+        !(node.type === 'section' && PROFILE_SECTIONS.includes(node.data.sectionId)),
+    ),
     'education',
   )
 }

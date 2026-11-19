@@ -99,6 +99,9 @@ export function reviewCv(cv: Cv, snapshot: Snapshot, bank: Experience[], posting
   const long = [...bullets, ...blockBullets].filter((text) => text.length > 220)
   if (long.length > 0) findings.push({ kind: 'wording', message: `${long.length} achievement(s) longer than two lines: tighten them.` })
 
+  if ((cv.skillsFormat ?? 'list') === 'list' && (snapshot.skills?.length ?? 0) > 8) {
+    findings.push({ kind: 'length', message: `${snapshot.skills?.length} skills as a vertical list take a lot of space: use skills_format "comma" (update_cv).` })
+  }
   if (cv.templateId !== 'classic') findings.push({ kind: 'ats', message: `The "${cv.templateId}" template uses columns; some screening software reads them out of order. "classic" (single column) is the safest.` })
   const contact = snapshot.profile.fields.filter((field) => field.value.trim())
   if (!snapshot.profile.name || !contact.some((field) => field.kind === 'email')) findings.push({ kind: 'contact', message: 'Missing name or email in the header.' })

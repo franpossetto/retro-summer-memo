@@ -36,7 +36,9 @@ export function sampleDocument(): ResumeDocument {
     position: { x: 400.5, y: 280.25 },
     data: { text: 'Wrote the first program', ability: '', skills: ['Algorithms'] },
   }
-  const nodes: ResumeNode[] = [person, role, bullet]
+  // A section node: which entries of a section (projects here) this CV shows.
+  const projects: ResumeNode = { id: 'section-1', type: 'section', position: { x: 48, y: 900 }, data: { sectionId: 'projects', entryIds: ['project-1'], experienceIds: [] } }
+  const nodes: ResumeNode[] = [person, role, bullet, projects]
   const edges: ResumeEdge[] = [{ id: 'e-role-1-bullet-1', source: 'role-1', target: 'bullet-1' }]
 
   const seedCv = seed.cvs[0]
@@ -111,7 +113,13 @@ export function sampleDocument(): ResumeDocument {
     cvs: [mainCv, { ...backendCv, extra: { language: 'en' } }],
     activeCvId: mainCv.id,
     bank: seed.bank.map((item, index) => (index === 0 ? { ...item, entryId: 'job-1-r1', extra: { metric: '-40% latency' } } : item)),
-    sections: seed.sections.map((section) => (section.id === 'experience' ? { ...section, name: 'Experiencia laboral', extra: { order: 1 } } : section)),
+    sections: seed.sections.map((section) =>
+      section.id === 'experience'
+        ? { ...section, name: 'Experiencia laboral', extra: { order: 1 } }
+        : section.id === 'projects'
+          ? { ...section, active: true, entries: [{ id: 'project-1', title: 'Difference Engine notes', subtitle: 'Author', location: '', start: '1842', end: '1843', description: '', url: '' }] }
+          : section,
+    ),
     knowledge: [
       { id: 'rest-api', level: 2 },
       { id: 'sql', level: 0 },

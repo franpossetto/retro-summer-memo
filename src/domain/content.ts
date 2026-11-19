@@ -148,7 +148,8 @@ export function saveEntry(
   const next = { ...current, ...definedFields(input), id: entryId }
   const nextEntries = entries.some((entry) => entry.id === entryId) ? entries.map((entry) => (entry.id === entryId ? next : entry)) : [...entries, next]
   return {
-    document: { ...withSection, sections: withSection.sections.map((item) => (item.id === sectionId ? { ...item, entries: nextEntries } : item)) },
+    // Adding content to a section means using it: turn it on.
+    document: { ...withSection, sections: withSection.sections.map((item) => (item.id === sectionId ? { ...item, entries: nextEntries, active: true } : item)) },
     sectionId,
     entryId,
   }

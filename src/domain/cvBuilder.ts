@@ -153,6 +153,8 @@ export function buildCv(
       lineHeight: 1.15,
       marginId: defaultMargin(templateId),
       pageSize: 'letter',
+      // Compact skills keep the CV short and read well in screening software.
+      skillsFormat: 'comma',
       enabledSections: [],
       versions: [],
     }),

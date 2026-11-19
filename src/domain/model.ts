@@ -694,6 +694,8 @@ export function buildResume(nodes: ResumeNode[], edges: ResumeEdge[], summary: s
 
   const educationNode = nodes.find(isEducationNode)
   const sectionContent = context ? sectionBlocks(nodes, context) : { blocks: [], skills: [] }
+  // Skills shown in other sections (a project's stack…) count for the Skills section too.
+  addSkillGroup(groups, '', sectionContent.skills)
   const skillGroups = [...groups.values()]
     .filter((group) => group.skills.length > 0)
     .map((group) => ({ ability: group.ability, skills: group.skills }))

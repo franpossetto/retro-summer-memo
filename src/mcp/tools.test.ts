@@ -192,8 +192,9 @@ describe('MCP tools', () => {
       application_id: globex.id,
     })
     expect(built.outline.roles.find((item: { company: string }) => item.company === 'S64 Capital')).toMatchObject({ experiences: 2 })
+    // Sections asked for show all their entries: the sample's project plus Weball.
     expect(built.outline.sections).toEqual([
-      { name: 'Personal projects', entries: 1 },
+      { name: 'Personal projects', entries: 2 },
       { name: 'Certificaciones', entries: 1 },
     ])
     expect(built.outline.unplaced).toEqual([{ id: loose.experience_id, text: 'Mentoría a juniors' }])

@@ -138,7 +138,12 @@ describe('buildCv', () => {
     const cv = built.cvs.find((item) => item.id === cvId)!
     expect(built.activeCvId).toBe(cvId)
     expect(cv.enabledSections).toEqual(['personal', 'experience', 'education', 'skills', 'projects'])
-    const block = cv.versions.at(-1)!.snapshot.blocks![0]
+    const snapshot = cv.versions.at(-1)!.snapshot
+    // Skills of experiences in other sections (the project's React) reach the Skills section, listed or grouped.
+    expect(snapshot.skills).toContain('React')
+    expect(snapshot.skillGroups.flatMap((group) => group.skills)).toContain('React')
+    expect(cv.skillsFormat).toBe('comma')
+    const block = snapshot.blocks![0]
     expect(block.entries[0]).toMatchObject({ title: 'Weball', subtitle: 'Founder & Software Architect', dates: '2024 – Actualidad', bullets: ['Plataforma usada por 300 ligas'] })
   })
 
