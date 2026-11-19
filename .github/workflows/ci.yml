@@ -129,10 +129,12 @@ jobs:
           vercel="npx --yes vercel@66.2.0"
           url=$($vercel deploy --prod --skip-domain --yes --token="$VERCEL_TOKEN")
           echo "Built $url"
-          page=$($vercel curl / --deployment "$url" --yes --token="$VERCEL_TOKEN")
+          # `vercel curl` passes options it does not know to curl (`--token` included): the CLI
+          # takes the token from VERCEL_TOKEN instead, which this job sets.
+          page=$($vercel curl / --deployment "$url" --yes)
           bundle=$(echo "$page" | grep -o 'assets/index-[A-Za-z0-9_-]*\.js' | head -1)
           [ -n "$bundle" ] || { echo "::error::No app bundle in $url: not published"; exit 1; }
-          $vercel curl "/$bundle" --deployment "$url" --yes --token="$VERCEL_TOKEN" | grep -q "$SUPABASE_PROJECT_REF.supabase.co" || {
+          $vercel curl "/$bundle" --deployment "$url" --yes | grep -q "$SUPABASE_PROJECT_REF.supabase.co" || {
             echo "::error::$url was built without its Supabase settings: not published"
             exit 1
           }
