@@ -59,14 +59,17 @@ npx supabase db push --remote                        # applies supabase/migratio
 ```
 
 Redirect URLs (Authentication → URL Configuration) must include every origin the app is served
-from, or sign-in links bounce to the Site URL. Set: Site URL `https://retro-summer-memo.vercel.app`,
-redirects `https://retro-summer-memo.vercel.app` and `http://localhost:4173` (preview).
+from, or sign-in links bounce to the Site URL. Set: Site URL `https://retro-summer-memo.com`,
+redirects `https://retro-summer-memo.com/**`, `https://retro-summer-memo.vercel.app/**` and
+`http://localhost:4173` (preview).
 
 ## Deploy
 
-The frontend is a static build on Vercel (Supabase does not host frontends):
-https://retro-summer-memo.vercel.app. `VITE_SUPABASE_URL` / `VITE_SUPABASE_PUBLISHABLE_KEY` are set
-in the Vercel project (Production); `.vercelignore` keeps local env files out of the upload.
+The frontend is a static build on Vercel (Supabase does not host frontends) at
+https://retro-summer-memo.com (`www` redirects there; the domain's DNS is at GoDaddy, pointing to
+Vercel; https://retro-summer-memo.vercel.app keeps working). `VITE_SUPABASE_URL`,
+`VITE_SUPABASE_PUBLISHABLE_KEY` and `VITE_MCP_URL` are set in the Vercel project (Production);
+`.vercelignore` keeps local env files out of the upload.
 
 ```bash
 vercel deploy --prod      # from the repo root (project already linked in .vercel/)
@@ -79,7 +82,9 @@ Do not `supabase config push` this repo's `config.toml` to the cloud: it holds l
 
 The assistant is the main way to use Resume: "Actualizá mi info en Resume", "Armemos el CV para
 <link>", "Me confirmaron de Acme, paso al challenge el 20/3". `supabase/functions/mcp` is a remote
-MCP server at `https://attrxmtjyjzfgopfrgnk.supabase.co/functions/v1/mcp`.
+MCP server at **`https://retro-summer-memo.com/mcp`**: `vercel.json` forwards it to the function's
+`_site` sub-path, which advertises that URL as the OAuth resource. The function's own URL,
+`https://attrxmtjyjzfgopfrgnk.supabase.co/functions/v1/mcp`, works too.
 
 - The tools live in `src/mcp` and work on the whole document through the `DocumentStore` port, so
   they change data exactly like the app (same domain code, same incremental saves). The model the
