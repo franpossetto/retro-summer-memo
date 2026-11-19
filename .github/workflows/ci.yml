@@ -83,7 +83,9 @@ jobs:
   deploy:
     name: Deploy to production
     needs: [check, integration]
-    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    # A merge to main deploys. A manual run (Actions → CI/CD → Run workflow) deploys the branch it
+    # runs on: the way to try a change to this job before merging it.
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     environment:
       name: production
