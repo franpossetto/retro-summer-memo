@@ -64,6 +64,18 @@ describe('MCP server', () => {
     expect(metadata.authorization_servers).toEqual([`${url}/auth/v1`])
   })
 
+  it("answers through the app's domain as that domain, with the project's Auth as issuer", async () => {
+    // vercel.json forwards https://retro-summer-memo.com/mcp/* to the function's _site sub-path.
+    const response = await fetch(`${endpoint}/_site`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' })
+    expect(response.status).toBe(401)
+    expect(response.headers.get('www-authenticate')).toContain('resource_metadata="https://retro-summer-memo.com/mcp/oauth-protected-resource"')
+
+    const metadata = await (await fetch(`${endpoint}/_site/oauth-protected-resource`)).json()
+    expect(metadata.resource).toBe('https://retro-summer-memo.com/mcp')
+    expect(metadata.authorization_servers).toHaveLength(1)
+    expect(metadata.authorization_servers[0]).toMatch(/\/auth\/v1$/)
+  })
+
   it('lists the tools and the everyday prompts', async () => {
     const { token } = await newUser()
     const { message: tools } = await rpc(token, 'tools/list')

@@ -1,6 +1,6 @@
 /** What the assistant is told about this server, the data model and how to write CVs. */
 
-export const APP_URL = 'https://retro-summer-memo.vercel.app'
+export const APP_URL = 'https://retro-summer-memo.com'
 
 export const INSTRUCTIONS = `"Resume" is the user's career workspace and you are its main interface: their profile, their experience, tailored CVs, and the job applications they track. You can read and change all of it; the app (${APP_URL}) shows every change live.
 

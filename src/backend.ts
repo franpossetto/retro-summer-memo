@@ -40,7 +40,8 @@ export function createBackend(env: ImportMetaEnv = import.meta.env): Backend {
       redirectTo: () => window.location.origin + window.location.pathname + window.location.search,
     }),
     consent: createSupabaseConsent(client),
-    mcpUrl: `${url.replace(/\/+$/, '')}/functions/v1/mcp`,
+    // The app's own domain when it forwards /mcp (production); the function's URL otherwise.
+    mcpUrl: env.VITE_MCP_URL || `${url.replace(/\/+$/, '')}/functions/v1/mcp`,
     storeFor: (session) => createSupabaseStore(client, session.userId),
     devMailbox: env.VITE_DEV_MAILBOX_URL ?? '',
   }
