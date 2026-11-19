@@ -67,10 +67,13 @@ jobs:
       - name: Serve the MCP function
         run: |
           npx supabase functions serve mcp > functions.log 2>&1 &
-          for attempt in $(seq 1 60); do
-            curl -s -o /dev/null "$VITE_SUPABASE_URL/functions/v1/mcp/oauth-protected-resource" && break
+          # Ready when it answers 200: while it boots, the gateway answers 502.
+          for attempt in $(seq 1 90); do
+            curl -sf -o /dev/null "$VITE_SUPABASE_URL/functions/v1/mcp/oauth-protected-resource" && exit 0
             sleep 2
           done
+          echo "::error::The MCP function did not start"
+          exit 1
       - name: MCP end to end
         run: npm run test:mcp -- --retry=1
       - name: Function logs
