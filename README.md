@@ -4,6 +4,16 @@ Build tailored CVs from a graph of your experience, and track every application 
 which CV (exact version) went where, what step each process is in, and whether you already
 applied to that posting or role before.
 
+It is driven by your assistant (ChatGPT, Claude, Gemini…) through an MCP server: "Actualizá mi info
+en Resume", "Armemos el CV para <link>", "Me confirmaron de Acme, paso al challenge el 20/3". The app
+is the engine and the viewer, and shows the assistant's changes live.
+
+| Applications | A CV built for a posting |
+| --- | --- |
+| ![Applications](docs/screenshots/05-applications.jpg) | ![CV preview](docs/screenshots/13-cv-preview.jpg) |
+
+More in [docs/screenshots](docs/screenshots).
+
 ## Architecture
 
 ```
