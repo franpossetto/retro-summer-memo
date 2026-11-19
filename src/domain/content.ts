@@ -7,7 +7,7 @@
  * Pure functions over the document.
  */
 import { readExtra, type Extra } from './extra'
-import type { Experience, ExperienceLevel } from './experiences'
+import { normalizePhrase, type Experience, type ExperienceLevel } from './experiences'
 import { writeProfile } from './documentOps'
 import { PROFILE_SECTIONS, type CatalogSection, type Job, type ProfileField, type ProfileFieldKind, type ResumeDocument, type SectionEntry } from './model'
 
@@ -325,6 +325,88 @@ export function updateProfileInfo(
     fields,
     ...(extra ? { extra } : {}),
   })
+}
+
+// ---------------------------------------------------------------------------
+// Import: a whole old CV, a LinkedIn export or a long story in one go
+// ---------------------------------------------------------------------------
+
+export type ImportedExperience = Omit<ExperienceInput, 'id' | 'entryId'> & { text: string }
+
+export type CareerImport = {
+  profile?: { name?: string; fields?: { label: string; value: string; kind?: ProfileFieldKind }[]; extra?: Extra }
+  /** Roles, studies, projects… each with the achievements that happened there. */
+  entries?: (EntryInput & { section: string; experiences?: ImportedExperience[] })[]
+  /** Achievements for entries that already exist. */
+  experiences?: (ImportedExperience & { entryId: string })[]
+}
+
+export type CareerImportReport = {
+  profile: boolean
+  entries: { section: string; entryId: string; title: string; subtitle: string; created: boolean }[]
+  experiences: { experienceId: string; text: string; entryId: string }[]
+  /** Achievements already in the bank (same text), not added again. */
+  skipped: string[]
+}
+
+const blankToUndefined = (input: EntryInput): EntryInput =>
+  Object.fromEntries(Object.entries(input).filter(([, value]) => value !== undefined && value !== '')) as EntryInput
+
+/**
+ * Saves many things at once and never duplicates: an entry with the same section, title,
+ * subtitle (and start, when both have one) as an existing one is updated (blank fields never
+ * erase what is there), and an achievement whose text is already in the bank is skipped.
+ */
+export function importCareer(document: ResumeDocument, input: CareerImport): { document: ResumeDocument; report: CareerImportReport } {
+  const report: CareerImportReport = { profile: false, entries: [], experiences: [], skipped: [] }
+  let next = document
+  if (input.profile && (input.profile.name !== undefined || input.profile.fields?.length || input.profile.extra)) {
+    next = updateProfileInfo(next, { ...input.profile, name: input.profile.name?.trim() || undefined })
+    report.profile = true
+  }
+  const known = new Set(next.bank.map((item) => normalizePhrase(item.text)))
+
+  function addExperience(item: ImportedExperience, entryId: string) {
+    const key = normalizePhrase(item.text)
+    if (!key) return
+    if (known.has(key)) {
+      report.skipped.push(item.text)
+      return
+    }
+    known.add(key)
+    const saved = saveExperience(next, { ...item, entryId })
+    next = saved.document
+    report.experiences.push({ experienceId: saved.experienceId, text: item.text.trim(), entryId })
+  }
+
+  for (const { section, experiences, ...fields } of input.entries ?? []) {
+    const clean = blankToUndefined(fields)
+    const match = clean.id ? undefined : findEntry(next, section, clean)
+    const saved = saveEntry(next, section, { ...clean, id: clean.id ?? match?.id })
+    next = saved.document
+    report.entries.push({ section: saved.sectionId, entryId: saved.entryId, title: clean.title ?? match?.title ?? '', subtitle: clean.subtitle ?? match?.subtitle ?? '', created: !clean.id && !match })
+    for (const item of experiences ?? []) addExperience(item, saved.entryId)
+  }
+  for (const { entryId, ...item } of input.experiences ?? []) {
+    if (!sectionsView(next).some((section) => section.entries.some((entry) => entry.id === entryId))) {
+      throw new Error(`No existe la entrada ${entryId}: mandala en entries o usá list_sections.`)
+    }
+    addExperience(item, entryId)
+  }
+  return { document: next, report }
+}
+
+/** An existing entry that is the same thing: same title and subtitle, and same start when both say one. */
+function findEntry(document: ResumeDocument, sectionIdOrName: string, input: EntryInput): SectionEntry | undefined {
+  const section = findSection(document, sectionIdOrName)
+  if (!section || !input.title) return undefined
+  const entries = sectionsView(document).find((view) => view.id === section.id)?.entries ?? []
+  return entries.find(
+    (entry) =>
+      fold(entry.title) === fold(input.title ?? '') &&
+      fold(entry.subtitle) === fold(input.subtitle ?? '') &&
+      (!entry.start || !input.start || fold(entry.start) === fold(input.start)),
+  )
 }
 
 function guessKind(value: string): ProfileFieldKind {

@@ -11,7 +11,7 @@ import {
 } from '../../../domain/applications'
 import { applicationsTo, companyOf, type Company, type CompanyInput, type CompanyNoteInput } from '../../../domain/companies'
 import type { Cv } from '../../../domain/model'
-import { formatDateTime, formatDay, relativeTime } from '../../format'
+import { formatDateTime, formatDay, relativeTime, todayYmd } from '../../format'
 import { CompanyLogo } from '../companies/CompanyLogo'
 import { CompanyPanel } from '../companies/CompanyPanel'
 import { ExtraFields } from '../ExtraFields'
@@ -89,6 +89,7 @@ export function ApplicationPage({
   const attachedCv = attachment?.kind === 'cv' ? cvs.find((cv) => cv.id === attachment.cvId) : undefined
   const attachedVersionId = attachment?.kind === 'cv' ? attachment.versionId : ''
   const appliedOn = application.appliedOn || application.createdAt
+  const notYet = !application.appliedOn && statuses.find((status) => status.id === application.statusId)?.kind === 'considering'
   const upcoming = upcomingEvents(application, now)
   const companyName = application.company || 'Sin empresa'
 
@@ -105,7 +106,7 @@ export function ApplicationPage({
           <p className="app-page-role">{application.title || 'Sin puesto'}</p>
           <p className="app-page-meta">
             <span>
-              Postulado el {formatDay(appliedOn)} ({relativeTime(appliedOn, now)})
+              {notYet ? 'Guardado' : 'Postulado'} el {formatDay(appliedOn)} ({relativeTime(appliedOn, now)}){notYet ? ' · todavía no te postulaste' : ''}
             </span>
             {application.location ? <span>{application.location}</span> : null}
             {application.url ? (
@@ -120,7 +121,7 @@ export function ApplicationPage({
             statuses={statuses}
             value={application.statusId}
             label={`Estado de ${companyName}`}
-            onChange={(statusId) => onChange(moveApplication(application, statusId))}
+            onChange={(statusId) => onChange(moveApplication(application, statusId, '', new Date(), { statuses, appliedOn: todayYmd() }))}
           />
           <button type="button" className="button" onClick={onEdit}>
             Editar datos

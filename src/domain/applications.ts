@@ -5,8 +5,11 @@
 
 import { readExtra, withExtra, type Extra } from './extra'
 
-/** Kinds the app understands; any other string is accepted and counts as an open step. */
-export type KnownStatusKind = 'active' | 'offer' | 'rejected' | 'withdrawn'
+/**
+ * Kinds the app understands; any other string is accepted and counts as an open step.
+ * `considering`: a posting the user is weighing and has not applied to yet.
+ */
+export type KnownStatusKind = 'considering' | 'active' | 'offer' | 'rejected' | 'withdrawn'
 export type ApplicationStatusKind = KnownStatusKind | (string & {})
 
 export type ApplicationStatus = {
@@ -89,9 +92,16 @@ export type NewApplication = {
   appliedOn?: string
   attachment?: ApplicationAttachment | null
   note?: string
+  /** Step it starts in; default: the first open step (initialStatus). */
+  statusId?: string
 }
 
+/** Default step for postings the user is weighing. */
+const CONSIDERING_ID = 'considering'
+const CONSIDERING_NAME = 'Analizando propuesta'
+
 export const statusKinds: { kind: ApplicationStatusKind; label: string }[] = [
+  { kind: 'considering', label: 'Analizando' },
   { kind: 'active', label: 'En proceso' },
   { kind: 'offer', label: 'Oferta' },
   { kind: 'rejected', label: 'Rechazado' },
@@ -100,6 +110,7 @@ export const statusKinds: { kind: ApplicationStatusKind; label: string }[] = [
 
 export function defaultApplicationStatuses(): ApplicationStatus[] {
   return [
+    { id: CONSIDERING_ID, name: CONSIDERING_NAME, color: '#1b7c83', kind: 'considering' },
     { id: 'sent', name: 'CV enviado', color: '#6e7781', kind: 'active' },
     { id: 'accepted', name: 'CV aceptado', color: '#0969da', kind: 'active' },
     { id: 'hr-call', name: 'Call con RRHH', color: '#8250df', kind: 'active' },
@@ -111,11 +122,28 @@ export function defaultApplicationStatuses(): ApplicationStatus[] {
   ]
 }
 
-/** First status of the pipeline: where new applications start. */
+/** First open step of the pipeline: where applications the user already sent start. */
 export function initialStatus(statuses: ApplicationStatus[]): ApplicationStatus {
   const status = statuses.find((item) => item.kind === 'active') ?? statuses[0]
   if (!status) throw new Error('No application statuses defined')
   return status
+}
+
+/**
+ * The step for postings the user is weighing (kind `considering`, "Analizando propuesta" by
+ * default). Pipelines saved before it existed get it, first.
+ */
+export function consideringStatus(statuses: ApplicationStatus[]): { statuses: ApplicationStatus[]; status: ApplicationStatus; created: boolean } {
+  const existing = statuses.find((status) => status.kind === 'considering')
+  if (existing) return { statuses, status: existing, created: false }
+  const added = addStatus(statuses, CONSIDERING_NAME, 'considering')
+  const status = statuses.some((item) => item.id === CONSIDERING_ID) ? added.status : { ...added.status, id: CONSIDERING_ID }
+  return { statuses: added.statuses.map((item) => (item === added.status ? status : item)), status, created: true }
+}
+
+/** True for the steps where the user has not applied yet. */
+export function isConsidering(status: ApplicationStatus | undefined): boolean {
+  return status?.kind === 'considering'
 }
 
 export function createApplication(
@@ -123,7 +151,7 @@ export function createApplication(
   statuses: ApplicationStatus[],
   now: Date = new Date(),
 ): Application {
-  const status = initialStatus(statuses)
+  const status = (input.statusId && statuses.find((item) => item.id === input.statusId)) || initialStatus(statuses)
   const at = now.toISOString()
   const url = (input.url ?? '').trim()
   const events: ApplicationEvent[] = [{ id: crypto.randomUUID(), at, kind: 'status', statusId: status.id, text: '' }]
@@ -147,14 +175,64 @@ export function createApplication(
   }
 }
 
-/** Moves an application to another step, recording it in the history. */
-export function moveApplication(application: Application, statusId: string, note = '', now: Date = new Date()): Application {
+export type MoveOptions = {
+  /** The pipeline: with it, leaving "Analizando propuesta" for a real step records the day the user applied. */
+  statuses?: ApplicationStatus[]
+  /** That day (yyyy-mm-dd, the user's local date). Default: today in UTC. */
+  appliedOn?: string
+}
+
+/**
+ * Moves an application to another step, recording it in the history. Moving out of a considering
+ * step into an open one or an offer means the user applied: `appliedOn` is set when still empty.
+ */
+export function moveApplication(application: Application, statusId: string, note = '', now: Date = new Date(), options: MoveOptions = {}): Application {
   if (application.statusId === statusId && !note.trim()) return application
   const at = now.toISOString()
   const added: ApplicationEvent[] = []
   if (application.statusId !== statusId) added.push({ id: crypto.randomUUID(), at, kind: 'status', statusId, text: '' })
   if (note.trim()) added.push({ id: crypto.randomUUID(), at, kind: 'note', statusId, text: note.trim() })
-  return { ...application, statusId, events: withEvents(application.events, added), updatedAt: at }
+  const next = { ...application, statusId, events: withEvents(application.events, added), updatedAt: at }
+  return appliesNow(application, statusId, options.statuses) && !application.appliedOn ? { ...next, appliedOn: options.appliedOn || at.slice(0, 10) } : next
+}
+
+/** Leaving a considering step for one where the process goes on (not discarded nor rejected). */
+function appliesNow(application: Application, statusId: string, statuses: ApplicationStatus[] | undefined): boolean {
+  if (!statuses || application.statusId === statusId) return false
+  const from = statuses.find((status) => status.id === application.statusId)
+  const to = statuses.find((status) => status.id === statusId)
+  return isConsidering(from) && !!to && !isConsidering(to) && to.kind !== 'rejected' && to.kind !== 'withdrawn'
+}
+
+export type ScheduledInput = {
+  /** The event to change; a new one is added when missing. */
+  id?: string
+  /** When it is (ISO). */
+  at: string
+  /** call, interview, challenge, meeting… */
+  kind: string
+  /** What it is: "Call con Laura de RRHH", "Entrega del challenge". */
+  text: string
+  /** Step it belongs to; defaults to the step the application is in. */
+  statusId?: string
+}
+
+/** Puts something on the application's calendar (a call, an interview, a deadline), or moves it. */
+export function scheduleEvent(application: Application, input: ScheduledInput, now: Date = new Date()): { application: Application; eventId: string } {
+  const existing = input.id ? application.events.find((event) => event.id === input.id) : undefined
+  if (input.id && !existing) throw new Error(`No existe el evento ${input.id} en esta postulación.`)
+  if (existing && (existing.kind === 'status' || existing.kind === 'debrief')) throw new Error('Ese evento no es algo agendado.')
+  const kind = input.kind.trim() || 'event'
+  if (kind === 'status' || kind === 'debrief' || kind === 'note') throw new Error(`"${kind}" no es un tipo de evento agendable: usá call, interview, challenge…`)
+  const event: ApplicationEvent = {
+    ...(existing ?? { id: crypto.randomUUID() }),
+    at: input.at,
+    kind,
+    text: input.text.trim(),
+    statusId: input.statusId ?? existing?.statusId ?? application.statusId,
+  }
+  const events = withEvents(application.events.filter((item) => item.id !== event.id), [event])
+  return { application: { ...application, events, updatedAt: now.toISOString() }, eventId: event.id }
 }
 
 /**
@@ -277,7 +355,7 @@ export function stageVisits(application: Application, now: Date = new Date()): S
 export function stepsAhead(application: Application, statuses: ApplicationStatus[], visits: StageVisit[]): ApplicationStatus[] {
   const index = statuses.findIndex((status) => status.id === application.statusId)
   const current = statuses[index]
-  if (!current || current.kind !== 'active') return []
+  if (!current || (current.kind !== 'active' && current.kind !== 'considering')) return []
   const visited = new Set(visits.map((visit) => visit.statusId))
   return statuses.slice(index + 1).filter((status) => status.kind === 'active' && !visited.has(status.id))
 }
@@ -295,8 +373,8 @@ export function updateApplication(
 const statusPalette = ['#0969da', '#8250df', '#bf8700', '#bc4c00', '#1b7c83', '#bf3989', '#1a7f37', '#6e7781']
 
 /**
- * Adds a step to the pipeline. Open steps go after the last open one (before offer, rejected…),
- * closing steps go at the end. Picks a color not used yet when possible.
+ * Adds a step to the pipeline. Considering steps go first, open steps after the last open one
+ * (before offer, rejected…), closing steps at the end. Picks a color not used yet when possible.
  */
 export function addStatus(
   statuses: ApplicationStatus[],
@@ -306,10 +384,10 @@ export function addStatus(
   const used = new Set(statuses.map((status) => status.color.toLowerCase()))
   const color = statusPalette.find((candidate) => !used.has(candidate)) ?? statusPalette[statuses.length % statusPalette.length]
   const status: ApplicationStatus = { id: crypto.randomUUID(), name: name.trim() || 'Nuevo estado', color, kind }
-  if (kind !== 'active') return { statuses: [...statuses, status], status }
+  if (kind !== 'active' && kind !== 'considering') return { statuses: [...statuses, status], status }
   let insertAt = 0
   statuses.forEach((item, index) => {
-    if (item.kind === 'active') insertAt = index + 1
+    if (item.kind === kind || (kind === 'active' && item.kind === 'considering')) insertAt = index + 1
   })
   return { statuses: [...statuses.slice(0, insertAt), status, ...statuses.slice(insertAt)], status }
 }

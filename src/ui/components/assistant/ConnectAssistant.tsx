@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import type { ConnectedApp } from '../../../ports/auth'
 import { formatDateTime } from '../../format'
 import { PromptHint } from './PromptHint'
-import { prompts } from './prompts'
+import { projectInstructions, prompts } from './prompts'
 
 /** How to connect ChatGPT, Claude, Gemini… to Resume (the MCP), and the ones already connected. */
 export function ConnectAssistant({
@@ -86,10 +86,19 @@ export function ConnectAssistant({
           </li>
         </ul>
 
+        <h3 className="assistant-subtitle">Para que arranque solo</h3>
+        <p className="form-hint">
+          Armá un proyecto para tu búsqueda (en Claude o ChatGPT) y pegá esto en sus instrucciones. Así cada chat empieza mirando Resume, sin que
+          se lo pidas, y entiende solo un link de un aviso o un “mañana tengo call con RRHH”.
+        </p>
+        <div className="assistant-prompts">
+          <PromptHint label="" prompt={projectInstructions} block />
+        </div>
+
         <h3 className="assistant-subtitle">Después, probá con</h3>
         <div className="assistant-prompts">
-          <PromptHint label="" prompt={prompts.updateInfo} />
-          <PromptHint label="" prompt={prompts.buildCv} />
+          <PromptHint label="" prompt={prompts.start} />
+          <PromptHint label="" prompt={prompts.analyze} />
           <PromptHint label="" prompt={prompts.news('Acme', 'Challenge técnico')} />
         </div>
 
@@ -139,8 +148,8 @@ export function Onboarding({ connected, onConnect }: { connected: boolean; onCon
           )}
         </li>
         <li>
-          <span>Pedile que cargue todo lo que sabe de vos:</span>
-          <PromptHint label="" prompt={prompts.updateInfo} />
+          <span>Pedile que arme tu cuenta: te pide CVs viejos o tu LinkedIn y te va preguntando lo que falta.</span>
+          <PromptHint label="" prompt={prompts.start} />
         </li>
       </ol>
     </section>

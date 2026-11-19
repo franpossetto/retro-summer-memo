@@ -5,20 +5,25 @@ import { createMcpHandler, McpServer } from '@modelcontextprotocol/server'
 import { describe, expect, it } from 'vitest'
 import { createLocalStore } from '../adapters/local'
 import { memoryStorage } from '../test/memoryStorage'
+import { createEmptyDocument, type ResumeDocument } from '../domain/model'
 import { sampleDocument } from '../test/sample'
 import { registerTools } from './tools'
 
 const now = new Date('2026-11-18T12:00:00.000Z')
 
-async function setup(at: Date = now) {
+async function setup(at: Date = now, document: ResumeDocument = sampleDocument()) {
   const store = createLocalStore(memoryStorage(), 'mcp-test')
-  const document = sampleDocument()
   await store.save(document)
+  let clock = at
   const handler = createMcpHandler(() => {
     const server = new McpServer({ name: 'test', version: '0' })
-    registerTools(server, { store, now: () => at })
+    registerTools(server, { store, now: () => clock })
     return server
   })
+  /** Moves the server's clock, as if the user came back later. */
+  const travel = (to: string) => {
+    clock = new Date(to)
+  }
 
   async function rpc(method: string, params: unknown) {
     const response = await handler.fetch(
@@ -40,7 +45,7 @@ async function setup(at: Date = now) {
     return message.result.isError ? { error: text } : text.startsWith('{') || text.startsWith('[') ? JSON.parse(text) : text
   }
 
-  return { store, document, rpc, call, load: async () => (await store.load())! }
+  return { store, document, rpc, call, travel, load: async () => (await store.load())! }
 }
 
 describe('MCP tools', () => {
@@ -51,7 +56,9 @@ describe('MCP tools', () => {
       expect.arrayContaining(['describe_model', 'cv_guidelines', 'get_document', 'update_document', 'list_sections', 'save_entry', 'save_experience', 'build_cv', 'move_application']),
     )
     const prompts = (await rpc('prompts/list', {})).result.prompts.map((prompt: { name: string }) => prompt.name)
-    expect(prompts).toEqual(['actualizar-mi-info', 'armar-cv', 'como-me-fue', 'investigar-empresa', 'preparar-entrevista', 'novedad'])
+    expect(prompts).toEqual(['preparar-mi-resume', 'actualizar-mi-info', 'armar-cv', 'analizar-aviso', 'como-me-fue', 'investigar-empresa', 'preparar-entrevista', 'novedad'])
+    expect(tools[0]).toBe('get_started')
+    expect(tools).toEqual(expect.arrayContaining(['onboarding_guide', 'import_career', 'schedule_step']))
     expect(tools).toEqual(expect.arrayContaining(['get_company', 'save_company', 'save_company_note', 'delete_company_note', 'delete_company', 'save_debrief', 'delete_event']))
   })
 
@@ -173,6 +180,9 @@ describe('MCP tools', () => {
 
     const latency = await call('save_experience', { text: 'Reduje un 40% la latencia de órdenes con Redis', entry_id: role.entry_id, skills: ['Redis', 'Node.js'], level: 'profesional' })
     const team = await call('save_experience', { text: 'Responsable del equipo de backend', entry_id: role.entry_id, skills: ['Leadership'] })
+    expect(team.follow_up).toEqual([expect.stringContaining('No measurable result')])
+    expect(latency.follow_up).toEqual([])
+    expect(role.follow_up).toEqual([expect.stringContaining(`entry_id ${role.entry_id}`)])
     const leagues = await call('save_experience', { text: 'Plataforma usada por 300 ligas', entry_id: project.entry_id, skills: ['React'] })
     const loose = await call('save_experience', { text: 'Mentoría a juniors' })
     expect(await call('save_experience', { text: 'X', entry_id: 'nope' })).toMatchObject({ error: expect.stringContaining('No existe la entrada') })
@@ -309,9 +319,9 @@ describe('MCP tools', () => {
 
     it('tells what is known about the company when an application is created, and refuses unknown steps', async () => {
       const { call, load } = await setup()
-      const created = await call('create_application', { company: 'ACME', title: 'Staff Engineer', confirm_duplicate: true })
+      const created = await call('create_application', { stage: 'applied', company: 'ACME', title: 'Staff Engineer', confirm_duplicate: true })
       expect(created.company).toMatchObject({ saved: true, company_id: 'company-acme', notes: 3 })
-      const fresh = await call('create_application', { company: 'Hooli', title: 'Dev' })
+      const fresh = await call('create_application', { stage: 'applied', company: 'Hooli', title: 'Dev' })
       expect(fresh.company).toMatchObject({ saved: false })
       expect(await call('get_company', { company: 'Hooli' })).toMatchObject({ company_id: null, saved: false, applications: [{ company: 'Hooli' }] })
       expect(await call('get_company', { company: 'Nadie' })).toMatchObject({ error: expect.stringContaining('No hay nada') })
@@ -341,5 +351,116 @@ describe('MCP tools', () => {
       expect(note.id).toBeTruthy()
     })
   })
-})
 
+  describe('the assistant drives the conversation', () => {
+    it('starts an empty account with the onboarding, and a used one with its gaps and pipeline', async () => {
+      const empty = await setup(now, createEmptyDocument())
+      const fresh = await empty.call('get_started')
+      expect(fresh).toMatchObject({ today: now.toISOString(), user: null, setup: { mode: 'empty' }, onboarding_guide: expect.stringContaining('import_career') })
+      expect(fresh.start_with[0]).toMatch(/onboarding/)
+
+      const { call } = await setup()
+      const started = await call('get_started')
+      // One role with one achievement placed under it: enough to build CVs, with gaps left to polish.
+      expect(started).toMatchObject({ user: 'Ada Lovelace', setup: { mode: 'ready' }, applications: { total: 2, open: 2 } })
+      expect(started.onboarding_guide).toBeUndefined()
+      expect(started.setup.done).toEqual(expect.arrayContaining(['name', 'email', 'roles', 'achievements', 'roles_without_achievements']))
+      expect(started.setup.missing.map((item: { key: string }) => item.key)).toEqual(expect.arrayContaining(['phone', 'linkedin']))
+      expect(started.pipeline[0]).toEqual({ step: 'Analizando propuesta', kind: 'considering' })
+      expect(started.agenda.upcoming).toEqual([expect.objectContaining({ company: 'Acme', what: 'Entrevista con el CTO', event_id: 'acme-interview' })])
+      expect(started.start_with.length).toBeGreaterThan(0)
+      expect(await call('onboarding_guide')).toMatch(/role by role/)
+    })
+
+    it('saves a bare posting as "Analizando propuesta" with how it fits, and records the day once the user applies', async () => {
+      const { call, load } = await setup()
+      const imported = await call('import_career', {
+        entries: [{ section: 'experience', title: 'Engineer', subtitle: 'Analytical Engines', start: '1842', experiences: [{ text: 'Reduje un 40% la latencia con Redis', skills: ['Redis', 'Node.js'] }] }],
+      })
+      expect(imported.entries).toEqual([expect.objectContaining({ entry_id: 'job-1-r1', created: false })])
+
+      const posting = 'Initech busca Backend Engineer: Node.js, Redis y Kubernetes. Remoto.'
+      const weighing = await call('create_application', { stage: 'considering', company: 'Initech', title: 'Backend Engineer', url: 'https://jobs.lever.co/initech/abc', posting })
+      expect(weighing).toMatchObject({
+        created: true,
+        application: { status: 'Analizando propuesta', applied_on: null },
+        fit: { backed_by_experience: expect.arrayContaining(['Node.js', 'Redis']), not_in_experience: ['Kubernetes'], closest_experiences: [{ text: 'Reduje un 40% la latencia con Redis' }] },
+        company: { saved: true },
+      })
+      expect(weighing.created_status).toBeUndefined()
+      expect(weighing.follow_up.join(' ')).toMatch(/short take.*apply.*discard/s)
+
+      const applied = await call('move_application', { id: weighing.application.id, status: 'CV enviado', applied_on: '2026-11-17' })
+      expect(applied).toMatchObject({ status: 'CV enviado', applied_on: '2026-11-17', applied_on_recorded: '2026-11-17' })
+      expect(applied.follow_up.join(' ')).toMatch(/They applied/)
+      expect((await load()).applications.find((item) => item.id === weighing.application.id)?.appliedOn).toBe('2026-11-17')
+    })
+
+    it('adds "Analizando propuesta" to pipelines saved before it existed', async () => {
+      const old = sampleDocument()
+      const { call, load } = await setup(now, { ...old, applicationStatuses: old.applicationStatuses.filter((status) => status.kind !== 'considering') })
+      const weighing = await call('create_application', { stage: 'considering', company: 'Hooli', title: 'Dev' })
+      expect(weighing).toMatchObject({ created_status: 'Analizando propuesta', application: { status: 'Analizando propuesta' } })
+      expect(weighing.fit).toBeUndefined()
+      expect(weighing.follow_up[0]).toMatch(/No posting text/)
+      expect((await load()).applicationStatuses[0]).toMatchObject({ name: 'Analizando propuesta', kind: 'considering' })
+    })
+
+    it('puts "mañana tengo call con RRHH" on the calendar, then asks how it went once it is past', async () => {
+      const { call, document, travel } = await setup()
+      const globex = document.applications.find((application) => application.company === 'Globex')!
+      const scheduled = await call('schedule_step', {
+        application_id: globex.id,
+        what: 'Call con Laura (RRHH)',
+        at: '2026-11-19T15:00:00-03:00',
+        kind: 'call',
+        move_to: 'call con rrhh',
+      })
+      expect(scheduled).toMatchObject({ at: '2026-11-19T18:00:00.000Z', kind: 'call', step: 'Call con RRHH', application: { status: 'Call con RRHH' } })
+      expect(scheduled.follow_up).toHaveLength(3)
+
+      const before = await call('get_started')
+      expect(before.agenda.upcoming[0]).toMatchObject({ company: 'Globex', what: 'Call con Laura (RRHH)', step: 'Call con RRHH' })
+      expect(before.start_with.join(' ')).toMatch(/Globex — "Call con Laura \(RRHH\)" on 2026-11-19 18:00/)
+
+      const moved = await call('schedule_step', { application_id: globex.id, event_id: scheduled.event_id, what: 'Call con Laura (RRHH)', at: '2026-11-20T15:00:00-03:00', kind: 'call' })
+      expect(moved).toMatchObject({ event_id: scheduled.event_id, at: '2026-11-20T18:00:00.000Z' })
+
+      travel('2026-11-21T12:00:00.000Z')
+      const after = await call('get_started')
+      expect(after.agenda.to_debrief).toEqual([expect.objectContaining({ company: 'Globex', event_id: scheduled.event_id, days: 0 })])
+      expect(after.start_with[0]).toMatch(/Globex.*no debrief.*save_debrief/)
+      const told = await call('save_debrief', { application_id: globex.id, how_it_went: 'Bien, 30 minutos' })
+      expect(told.follow_up).toEqual([expect.stringContaining('what they were asked'), expect.stringContaining('1 to 5'), expect.stringContaining('move_application')])
+      expect((await call('get_started')).agenda.to_debrief).toEqual([])
+    })
+
+    it('takes a day without a time as that day, later today when its midday passed', async () => {
+      const { call, document } = await setup(new Date('2026-11-18T16:00:00.000Z'))
+      const globex = document.applications.find((application) => application.company === 'Globex')!
+      expect((await call('schedule_step', { application_id: globex.id, what: 'Entrega', at: '2026-11-18', kind: 'challenge' })).at).toBe('2026-11-18T23:59:00.000Z')
+      expect((await call('schedule_step', { application_id: globex.id, what: 'Entrega 2', at: '2026-11-25' })).at).toBe('2026-11-25T12:00:00.000Z')
+      expect(await call('schedule_step', { application_id: globex.id, what: 'x', at: '2026-11-25', kind: 'debrief' })).toMatchObject({ error: expect.stringContaining('debrief') })
+    })
+
+    it('imports a whole CV in one call, says what is still missing, and never duplicates', async () => {
+      const { call } = await setup(now, createEmptyDocument())
+      const cv = {
+        profile: { name: 'Guido', fields: [{ label: 'Email', value: 'guido@example.com' }] },
+        entries: [
+          { section: 'experience', title: 'Tech Lead', subtitle: 'Weball', start: '2022', experiences: [{ text: 'Lideré un equipo de 6 personas', level: 'profesional' }] },
+          { section: 'experience', title: 'Developer', subtitle: 'Globex', start: '2019' },
+        ],
+      }
+      const first = await call('import_career', cv)
+      expect(first).toMatchObject({ profile_updated: true, skipped_duplicates: [] })
+      expect(first.experiences_added).toHaveLength(1)
+      expect(first.follow_up.join(' ')).toMatch(/No achievements at Developer — Globex/)
+      const again = await call('import_career', cv)
+      expect(again.entries.every((entry: { created: boolean }) => !entry.created)).toBe(true)
+      expect(again.skipped_duplicates).toEqual(['Lideré un equipo de 6 personas'])
+      const profile = await call('update_profile', { fields: [{ label: 'Teléfono', value: '+54 11 5555 5555' }] })
+      expect(profile.follow_up[0]).toMatch(/location, linkedin/)
+    })
+  })
+})

@@ -20,7 +20,7 @@ import {
 } from '../../../domain/applications'
 import { companyOf, deleteCompany, deleteCompanyNote, saveCompany, saveCompanyNote, type Company } from '../../../domain/companies'
 import type { Cv, ResumeDocument } from '../../../domain/model'
-import { formatDateTime, formatDay, relativeTime } from '../../format'
+import { formatDateTime, formatDay, relativeTime, todayYmd } from '../../format'
 import { CompanyLogo } from '../companies/CompanyLogo'
 import { ApplicationPage, type CompanyActions } from './ApplicationPage'
 import { ApplicationForm, type ApplicationFormValues } from './ApplicationForm'
@@ -155,7 +155,7 @@ export function Applications({ applications, statuses, companies, cvs, onChange,
     onChange((current) => ({
       ...current,
       applications: current.applications.map((application) =>
-        application.id === id ? moveApplication(application, statusId) : application,
+        application.id === id ? moveApplication(application, statusId, '', new Date(), { statuses: current.applicationStatuses, appliedOn: todayYmd() }) : application,
       ),
     }))
   }
@@ -386,7 +386,7 @@ export function Applications({ applications, statuses, companies, cvs, onChange,
                     (status) =>
                       (query.statusIds.length === 0 || query.statusIds.includes(status.id)) &&
                       (query.scope === 'all' ||
-                        (query.scope === 'open') === (status.kind === 'active' || status.kind === 'offer')),
+                        (query.scope === 'open') === (status.kind !== 'rejected' && status.kind !== 'withdrawn')),
                   )}
                   statusById={statusById}
                   companies={companies}
@@ -493,6 +493,8 @@ function ApplicationList({
       <tbody>
         {applications.map((application) => {
           const on = application.appliedOn || application.createdAt
+          // A posting still being weighed has not been applied to yet.
+          const notYet = !application.appliedOn && statusById.get(application.statusId)?.kind === 'considering'
           const cv = application.attachment?.kind === 'cv' ? cvById.get(application.attachment.cvId) : undefined
           return (
             <tr
@@ -517,7 +519,13 @@ function ApplicationList({
                   onChange={(statusId) => onMove(application.id, statusId)}
                 />
               </td>
-              <td title={formatDay(on)}>{formatDay(on)}</td>
+              {notYet ? (
+                <td className="muted" title="Todavía no te postulaste">
+                  —
+                </td>
+              ) : (
+                <td title={formatDay(on)}>{formatDay(on)}</td>
+              )}
               <td>
                 <ActivityCell application={application} statusById={statusById} now={now} />
               </td>

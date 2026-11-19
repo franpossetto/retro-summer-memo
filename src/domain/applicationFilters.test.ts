@@ -6,6 +6,7 @@ import {
   defaultQuery,
   filterApplications,
   lastActivity,
+  upcomingEvents,
   type ApplicationQuery,
 } from './applicationFilters'
 import { addApplicationNote, createApplication, defaultApplicationStatuses, moveApplication, type Application } from './applications'
@@ -96,5 +97,13 @@ describe('companyFromUrl', () => {
     expect(companyFromUrl('https://www.linkedin.com/jobs/view/4012345678/')).toBe('')
     expect(companyFromUrl('https://example.com/careers/1')).toBe('')
     expect(companyFromUrl('not a url')).toBe('')
+  })
+})
+
+describe('upcomingEvents', () => {
+  it('lists what is scheduled later, never a status change whose clock ran ahead', () => {
+    const ahead = moveApplication(globex, 'hr-call', '', day(31))
+    const scheduled = { ...ahead, events: [...ahead.events, { id: 'call', at: day(31).toISOString(), kind: 'call', statusId: 'hr-call', text: 'Call' }] }
+    expect(upcomingEvents(scheduled, now).map((event) => event.id)).toEqual(['call'])
   })
 })

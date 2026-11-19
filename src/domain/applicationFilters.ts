@@ -31,10 +31,14 @@ export function lastActivity(application: Application, now: Date = new Date()): 
   return latest
 }
 
-/** Events dated in the future (a challenge on the 20th, an interview next week), soonest first. */
+/**
+ * Events dated in the future (a challenge on the 20th, an interview next week), soonest first. A
+ * status change is history even when its clock runs a little ahead of `now` (a page whose clock
+ * ticks once a minute), so it never counts.
+ */
 export function upcomingEvents(application: Application, now: Date = new Date()) {
   const cutoff = now.toISOString()
-  return application.events.filter((event) => event.at > cutoff).sort((left, right) => left.at.localeCompare(right.at))
+  return application.events.filter((event) => event.at > cutoff && event.kind !== 'status').sort((left, right) => left.at.localeCompare(right.at))
 }
 
 /** Whole days between `iso` and `now` (0 for today or a missing date). */

@@ -82,18 +82,18 @@ describe('MCP server', () => {
     expect(tools.result.tools.map((item: { name: string }) => item.name)).toEqual(
       expect.arrayContaining([
         'get_document', 'update_document', 'check_duplicates', 'create_application', 'move_application', 'build_cv', 'save_entry', 'list_sections',
-        'save_debrief', 'get_company', 'save_company', 'save_company_note',
+        'save_debrief', 'get_company', 'save_company', 'save_company_note', 'get_started', 'schedule_step', 'import_career',
       ]),
     )
     const { message: prompts } = await rpc(token, 'prompts/list')
     expect(prompts.result.prompts.map((item: { name: string }) => item.name)).toEqual([
-      'actualizar-mi-info', 'armar-cv', 'como-me-fue', 'investigar-empresa', 'preparar-entrevista', 'novedad',
+      'preparar-mi-resume', 'actualizar-mi-info', 'armar-cv', 'analizar-aviso', 'como-me-fue', 'investigar-empresa', 'preparar-entrevista', 'novedad',
     ])
   })
 
   it('does not write before the app has created the account', async () => {
     const { token } = await newUser()
-    const result = await tool(token, 'create_application', { company: 'Initech', title: 'SRE' })
+    const result = await tool(token, 'create_application', { stage: 'applied', company: 'Initech', title: 'SRE' })
     expect(result.error).toMatch(/entrá una vez/)
   })
 
@@ -115,13 +115,14 @@ describe('MCP server', () => {
     })
 
     it('only creates a duplicate once the user confirms', async () => {
-      const posting = { company: 'Acme', title: 'Backend Engineer', url: 'https://www.linkedin.com/jobs/view/4012345678/' }
+      const posting = { stage: 'applied', company: 'Acme', title: 'Backend Engineer', url: 'https://www.linkedin.com/jobs/view/4012345678/' }
       expect(await tool(user.token, 'create_application', posting)).toMatchObject({ created: false })
       expect(await tool(user.token, 'create_application', { ...posting, confirm_duplicate: true })).toMatchObject({ created: true })
     })
 
     it('creates, moves and edits applications that the app then reads back', async () => {
       const created = await tool(user.token, 'create_application', {
+        stage: 'applied',
         company: 'Initech',
         title: 'Site Reliability Engineer',
         location: 'Remoto',
@@ -154,6 +155,22 @@ describe('MCP server', () => {
         expect.any(String),
         'take-home',
       ])
+    })
+
+    it('keeps a posting in "Analizando propuesta" until the user applies, with what is scheduled', async () => {
+      const weighing = await tool(user.token, 'create_application', { stage: 'considering', company: 'Umbrella', title: 'Platform Engineer', posting: 'Kubernetes y Go' })
+      expect(weighing).toMatchObject({ created: true, application: { status: 'Analizando propuesta', applied_on: null }, fit: { not_in_experience: expect.arrayContaining(['Kubernetes']) } })
+      const id = weighing.application.id
+
+      const call = await tool(user.token, 'schedule_step', { application_id: id, what: 'Call con RRHH', at: '2099-03-01T15:00:00-03:00', kind: 'call' })
+      expect(call).toMatchObject({ at: '2099-03-01T18:00:00.000Z', step: 'Analizando propuesta' })
+      expect(await tool(user.token, 'move_application', { id, status: 'CV enviado', applied_on: '2026-11-19' })).toMatchObject({ applied_on_recorded: '2026-11-19' })
+
+      const started = await tool(user.token, 'get_started')
+      expect(started.agenda.upcoming).toEqual(expect.arrayContaining([expect.objectContaining({ application_id: id, what: 'Call con RRHH' })]))
+      const document = await createSupabaseStore(user.client, user.userId).load()
+      expect(document?.applicationStatuses[0]).toMatchObject({ name: 'Analizando propuesta', kind: 'considering' })
+      expect(document?.applications.find((application) => application.id === id)).toMatchObject({ appliedOn: '2026-11-19', statusId: 'sent' })
     })
 
     it("never shows one user's applications to another", async () => {
