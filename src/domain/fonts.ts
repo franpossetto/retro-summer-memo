@@ -1,14 +1,16 @@
 import type { TemplateId } from './templates'
 
-export const fontIds = ['times', 'georgia', 'palatino', 'sans'] as const
+export const fontIds = ['times', 'georgia', 'palatino', 'garamond', 'sans', 'inter'] as const
 
 export type FontId = (typeof fontIds)[number]
 
-export const fonts: { id: FontId; name: string; family: string }[] = [
-  { id: 'times', name: 'Times', family: "'Times New Roman', Times, serif" },
-  { id: 'georgia', name: 'Georgia', family: "Georgia, 'Times New Roman', serif" },
-  { id: 'palatino', name: 'Palatino', family: "Palatino, 'Palatino Linotype', 'Book Antiqua', serif" },
-  { id: 'sans', name: 'Sans', family: "system-ui, -apple-system, 'Segoe UI', sans-serif" },
+export const fonts: { id: FontId; name: string; family: string; kind: 'serif' | 'sans' }[] = [
+  { id: 'times', name: 'Times', family: "'Times New Roman', Times, serif", kind: 'serif' },
+  { id: 'georgia', name: 'Georgia', family: "Georgia, 'Times New Roman', serif", kind: 'serif' },
+  { id: 'palatino', name: 'Palatino', family: "Palatino, 'Palatino Linotype', 'Book Antiqua', serif", kind: 'serif' },
+  { id: 'garamond', name: 'Garamond', family: "'EB Garamond Variable', Garamond, 'Times New Roman', serif", kind: 'serif' },
+  { id: 'sans', name: 'Sistema', family: "system-ui, -apple-system, 'Segoe UI', sans-serif", kind: 'sans' },
+  { id: 'inter', name: 'Inter', family: "'Inter Variable', Inter, system-ui, sans-serif", kind: 'sans' },
 ]
 
 export function isFontId(value: unknown): value is FontId {
@@ -20,6 +22,7 @@ export function fontName(id: FontId) {
 }
 
 export function defaultFont(templateId: TemplateId): FontId {
+  if (templateId === 'modern') return 'inter'
   if (templateId === 'sidebar') return 'sans'
   if (templateId === 'timeline') return 'georgia'
   return 'times'
@@ -75,6 +78,40 @@ export function isMarginId(value: unknown): value is MarginId {
 
 export function defaultMargin(_templateId: TemplateId): MarginId {
   return 'normal'
+}
+
+/**
+ * Accent colors for names, headings and rules. Dark and saturated enough to print well and to
+ * read as text on white; the first is "no color".
+ */
+export const accentColors = [
+  { id: '#1f2328', name: 'Grafito' },
+  { id: '#1f3a5f', name: 'Azul marino' },
+  { id: '#0b5cad', name: 'Azul' },
+  { id: '#0f6e6e', name: 'Petróleo' },
+  { id: '#1e6b3a', name: 'Verde' },
+  { id: '#7a2e3a', name: 'Bordó' },
+  { id: '#5b3a8c', name: 'Violeta' },
+  { id: '#b4541a', name: 'Terracota' },
+] as const
+
+export const DEFAULT_ACCENT = '#1f2328'
+
+export function isAccentColor(value: unknown): value is string {
+  return typeof value === 'string' && /^#[0-9a-f]{6}$/i.test(value)
+}
+
+/** Sections of the CV body (everything but the header) in their default order. */
+export const DEFAULT_BODY_ORDER = ['experience', 'education', 'skills']
+
+/**
+ * The body sections in display order: those in `order` first, as given, then the rest in their
+ * default order (`available` is already in default order).
+ */
+export function orderSections(available: string[], order: string[] | undefined): string[] {
+  if (!order || order.length === 0) return available
+  const known = order.filter((id, index) => available.includes(id) && order.indexOf(id) === index)
+  return [...known, ...available.filter((id) => !known.includes(id))]
 }
 
 export function spacingLabel(value: number) {

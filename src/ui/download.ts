@@ -1,5 +1,5 @@
 import type { CatalogSection, Snapshot } from '../domain/model'
-import type { PageSize } from '../domain/fonts'
+import { orderSections, type PageSize } from '../domain/fonts'
 
 export function downloadPdf(pageSize: PageSize, title: string) {
   const previousTitle = document.title
@@ -16,8 +16,8 @@ export function downloadPdf(pageSize: PageSize, title: string) {
   window.print()
 }
 
-export function downloadDoc(title: string, snapshot: Snapshot, enabledSections: string[], sections: CatalogSection[]) {
-  const html = resumeDocHtml(title, snapshot, enabledSections, sections)
+export function downloadDoc(title: string, snapshot: Snapshot, enabledSections: string[], sections: CatalogSection[], sectionOrder?: string[]) {
+  const html = resumeDocHtml(title, snapshot, enabledSections, sections, sectionOrder)
   const blob = new Blob([`\uFEFF${html}`], { type: 'application/msword' })
   const url = URL.createObjectURL(blob)
   const link = document.createElement('a')
@@ -33,7 +33,7 @@ function fileBase(title: string) {
   return (safe || 'CV').slice(0, 80)
 }
 
-function resumeDocHtml(title: string, snapshot: Snapshot, enabledSections: string[], sections: CatalogSection[]) {
+function resumeDocHtml(title: string, snapshot: Snapshot, enabledSections: string[], sections: CatalogSection[], sectionOrder?: string[]) {
   const enabled = new Set(enabledSections)
   const label = (id: string, fallback: string) => sections.find((section) => section.id === id)?.name.trim() || fallback
   const parts: string[] = []
@@ -43,8 +43,17 @@ function resumeDocHtml(title: string, snapshot: Snapshot, enabledSections: strin
   if (name) parts.push(`<h1>${esc(name)}</h1>`)
   if (contact.length > 0) parts.push(`<p class="contact">${contact.map((field) => esc(field.value.trim())).join(' · ')}</p>`)
   if (snapshot.summary.trim()) parts.push(`<p>${esc(snapshot.summary.trim())}</p>`)
+  const header = parts.splice(0)
+  // Each body section's HTML, then joined in the CV's section order.
+  const groups = new Map<string, string[]>()
+  const section = (id: string) => {
+    const group = groups.get(id) ?? []
+    groups.set(id, group)
+    return group
+  }
 
   if (!snapshot.placeholder && enabled.has('experience') && snapshot.roles.length > 0) {
+    const parts = section('experience')
     parts.push(`<h2>${esc(label('experience', 'Experience'))}</h2>`)
     for (const role of snapshot.roles) {
       const heading = [role.title, role.company, role.location].filter(Boolean).join(', ')
@@ -60,6 +69,7 @@ function resumeDocHtml(title: string, snapshot: Snapshot, enabledSections: strin
   const education = !snapshot.placeholder && enabled.has('education') ? snapshot.education ?? [] : []
   const studies = education.filter((entry) => entry.school.trim() || entry.degree.trim())
   if (studies.length > 0) {
+    const parts = section('education')
     parts.push(`<h2>${esc(label('education', 'Education'))}</h2>`)
     for (const entry of studies) {
       const heading = [entry.degree.trim(), entry.school.trim()].filter(Boolean).join(', ')
@@ -70,12 +80,14 @@ function resumeDocHtml(title: string, snapshot: Snapshot, enabledSections: strin
 
   const skills = !snapshot.placeholder && enabled.has('skills') ? snapshot.skills ?? [] : []
   if (skills.length > 0) {
+    const parts = section('skills')
     parts.push(`<h2>${esc(label('skills', 'Skills'))}</h2>`)
     parts.push(`<p>${skills.map((skill) => esc(skill)).join(' · ')}</p>`)
   }
 
   for (const block of snapshot.blocks ?? []) {
-    if (snapshot.placeholder || !enabled.has(block.id) || block.entries.length === 0) continue
+    if (snapshot.placeholder || !enabled.has(block.id) || block.entries.length === 0 || groups.has(block.id)) continue
+    const parts = section(block.id)
     parts.push(`<h2>${esc(block.name.trim() || label(block.id, 'Section'))}</h2>`)
     if (block.entries.some((entry) => entry.title || entry.bullets)) {
       for (const entry of block.entries) {
@@ -89,6 +101,7 @@ function resumeDocHtml(title: string, snapshot: Snapshot, enabledSections: strin
     }
   }
 
+  parts.push(...header, ...orderSections([...groups.keys()], sectionOrder).flatMap((id) => groups.get(id) ?? []))
   if (parts.length === 0) parts.push(`<h1>${esc(fileBase(title))}</h1>`)
 
   return `<!DOCTYPE html>

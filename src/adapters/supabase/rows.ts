@@ -173,6 +173,8 @@ function cvRow(cv: Cv, document: ResumeDocument, sort: number): Row {
       marginId: cv.marginId,
       pageSize: cv.pageSize,
       skillsFormat: cv.skillsFormat,
+      accentColor: cv.accentColor,
+      sectionOrder: cv.sectionOrder,
     },
     enabled_sections: cv.enabledSections,
     graph: graphJson(live ? document.nodes : cv.nodes, live ? document.edges : cv.edges),

@@ -47,6 +47,8 @@ cvs: tailored CVs built from a selection                                        
   build_cv takes experience_ids (+ optional entry_ids, section_ids, summary, posting, style) and lays everything
   out: roles in profile order with their experiences, education, then other sections. Never edit CV graphs by hand.
   Each build saves a version (what the user reviews and downloads) and returns an outline and a review.
+  update_cv sets the look: template (classic, modern: single column; timeline, sidebar), font, size, spacing,
+  margins, paper, skills format, accent color and the order of the sections.
 
 applications: the job search                                     (create_application / move_application / add_note / update_application / delete_application)
   { id, company, title, url, posting, location, appliedOn, statusId, attachment, events, extra }
@@ -102,7 +104,7 @@ then a recruiter who scans the top third for a few seconds, then the hiring mana
      one standout result. No generic objectives.
 
 5. Format that parses
-   - Template "classic" (single column), standard headings in the CV's language, consistent dates.
+   - Template "classic" or "modern" (single column), standard headings in the CV's language, consistent dates.
    - No photos, tables, icons or graphics; no age or marital status; no "references available".
    - Header: name, the target title, location, email, phone, LinkedIn, GitHub or portfolio.
    - The CV's language follows the posting (rename section headings with save_section if needed).

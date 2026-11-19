@@ -17,6 +17,7 @@ import {
   type Profile,
   type ProfileField,
 } from '../../domain/model'
+import { analyzeCv, gradeFor } from '../../domain/cvAnalysis'
 import type { CvDraft } from '../../domain/documentOps'
 import { defaultFont, fonts, type FontId } from '../../domain/fonts'
 import {
@@ -568,7 +569,7 @@ export function Home({
       ) : projectsView === 'cards' ? (
         <ul className="project-grid">
           {cvs.map((cv) => {
-            const row = projectRow(cv)
+            const row = projectRow(cv, bank)
             const open = menuId === cv.id
             return (
               <li key={cv.id}>
@@ -595,7 +596,7 @@ export function Home({
       ) : (
         <ul className="project-list">
           {cvs.map((cv) => {
-            const row = projectRow(cv)
+            const row = projectRow(cv, bank)
             const open = menuId === cv.id
             return (
               <li key={cv.id} className="project-list-item">
@@ -869,12 +870,13 @@ function TemplateMark({ id }: { id: TemplateId }) {
   )
 }
 
-function projectRow(cv: Cv) {
+function projectRow(cv: Cv, bank: Experience[]) {
   const latest = cv.versions.at(-1)
   return {
     name: cv.title.trim() || 'Sin título',
     target: postingLabel(cv),
-    match: mockMatchScore(cv),
+    // The editor's analysis of what was last saved (the version that gets sent).
+    match: latest && !latest.snapshot.placeholder ? analyzeCv(cv, latest.snapshot, bank).score : null,
     when: latest ? formatWhen(latest.createdAt) : '—',
   }
 }
@@ -889,23 +891,18 @@ function postingLabel(cv: Cv) {
   return '—'
 }
 
-/** Placeholder until we score posting lines against selected skills/experiences. */
-function mockMatchScore(cv: Cv): number | null {
-  if (!cv.posting.trim() && !cv.position.trim() && !cv.company.trim()) return null
-  let hash = 0
-  for (const ch of cv.id) hash = (hash * 31 + ch.charCodeAt(0)) >>> 0
-  return 52 + (hash % 44)
-}
-
 function matchTone(score: number) {
-  if (score >= 80) return 'is-high'
-  if (score >= 60) return 'is-mid'
-  return 'is-low'
+  const tone = gradeFor(score).tone
+  return tone === 'great' || tone === 'good' ? 'is-high' : tone === 'fair' ? 'is-mid' : 'is-low'
 }
 
 function MatchBadge({ score }: { score: number | null }) {
   if (score === null) return <span className="match-empty">—</span>
-  return <span className={`match-score ${matchTone(score)}`}>{score}%</span>
+  return (
+    <span className={`match-score ${matchTone(score)}`} title={`Análisis de la última versión: ${score} de 100 (${gradeFor(score).label})`}>
+      {score}
+    </span>
+  )
 }
 
 function ProjectMenu({

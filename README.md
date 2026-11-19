@@ -1,6 +1,8 @@
 # CV builder + job applications tracker
 
-Build tailored CVs from a graph of your experience, and track every application you send:
+Build tailored CVs in a visual editor (the CV live on a canvas, with panels for its content,
+sections, design, an analysis with a score, the target posting and fixed versions), and track
+every application you send:
 which CV (exact version) went where, what step each process is in, and whether you already
 applied to that posting or role before. Each application opens as a page with the process step by
 step (how each call or interview went: what they asked, what you said and did not say, what they
@@ -12,9 +14,13 @@ en Resume", "Armemos el CV para <link>", "Me confirmaron de Acme, paso al challe
 "Recién salí de la call con RRHH, te cuento…", "Investigá Acme". The app is the engine and the
 viewer, and shows the assistant's changes live.
 
-| Applications | A CV built for a posting |
+| Applications | The CV editor: click any part of the page to edit it |
 | --- | --- |
-| ![Applications](docs/screenshots/05-applications.jpg) | ![CV preview](docs/screenshots/13-cv-preview.jpg) |
+| ![Applications](docs/screenshots/05-applications.jpg) | ![CV editor](docs/screenshots/13-cv-preview.jpg) |
+
+| How it reads to a screening filter and a recruiter | Template, color and typography |
+| --- | --- |
+| ![CV analysis](docs/screenshots/16-cv-analysis.jpg) | ![CV design](docs/screenshots/17-cv-design.jpg) |
 
 | An application: the process and the company | How each step went, and what is known about the company |
 | --- | --- |
@@ -79,7 +85,20 @@ Vercel; https://retro-summer-memo.vercel.app keeps working). `VITE_SUPABASE_URL`
 `VITE_SUPABASE_PUBLISHABLE_KEY` and `VITE_MCP_URL` are set in the Vercel project (Production);
 `.vercelignore` keeps local env files out of the upload.
 
+**CI/CD** (`.github/workflows/ci.yml`): every pull request runs lint, unit tests and both builds,
+and starts a real Supabase in the runner to apply every migration and run the integration and
+MCP end-to-end tests. A merge to `main` then deploys, one deploy at a time and in this order:
+database migrations (`supabase db push`), the `mcp` function, the app on Vercel; and checks that
+the site answers and the MCP asks for sign-in. It needs, in Settings → Secrets and variables →
+Actions: the secrets `SUPABASE_ACCESS_TOKEN` and `VERCEL_TOKEN`, and the variables
+`SUPABASE_PROJECT_REF`, `VERCEL_ORG_ID` and `VERCEL_PROJECT_ID` (from `.vercel/project.json`).
+Migrations must be additive: the database is updated before the code that uses it.
+
+By hand, if ever needed:
+
 ```bash
+npx supabase db push --remote=attrxmtjyjzfgopfrgnk --yes
+npm run mcp:deploy -- --remote=attrxmtjyjzfgopfrgnk --yes
 vercel deploy --prod      # from the repo root (project already linked in .vercel/)
 ```
 

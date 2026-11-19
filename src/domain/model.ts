@@ -222,6 +222,10 @@ export type Cv = {
   marginId: MarginId
   pageSize: PageSize
   skillsFormat?: 'list' | 'comma'
+  /** Color of the name, headings and rules (hex); none means the default dark. */
+  accentColor?: string
+  /** Body sections in display order (ids); missing ones follow in the default order. */
+  sectionOrder?: string[]
   enabledSections: string[]
   versions: CvVersion[]
   nodes: ResumeNode[]

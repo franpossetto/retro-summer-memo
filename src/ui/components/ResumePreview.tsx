@@ -1,6 +1,8 @@
-import { cloneElement, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactElement, type ReactNode } from 'react'
+import '@fontsource-variable/eb-garamond'
+import '@fontsource-variable/inter'
+import { cloneElement, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent, type ReactElement, type ReactNode } from 'react'
 import type { CatalogSection, EducationEntry, Snapshot, SnapshotBlock } from '../../domain/model'
-import { pageSpec, type FontId, type FontSize, type LineSpacing, type MarginId, type PageSize } from '../../domain/fonts'
+import { orderSections, pageSpec, type FontId, type FontSize, type LineSpacing, type MarginId, type PageSize } from '../../domain/fonts'
 import type { TemplateId } from '../../domain/templates'
 
 type ResumePreviewProps = {
@@ -16,6 +18,18 @@ type ResumePreviewProps = {
   sections: CatalogSection[]
   blocks: SnapshotBlock[]
   highlightId?: string
+  /** Color of the name, headings and rules. */
+  accentColor?: string
+  /** Body sections in display order (ids); missing ones follow in the default order. */
+  sectionOrder?: string[]
+  /** Every part of the page carries a `data-ref` ("bullet:<id>", "role:<id>", "section:<id>"…): clicking one reports it. */
+  onPick?: (ref: string) => void
+  /** Called with the number of pages after each layout. */
+  onPages?: (count: number) => void
+  /** Fixed zoom instead of fitting the pane's width. */
+  scale?: number
+  /** Called with the zoom that fits the pane's width. */
+  onScale?: (scale: number) => void
 }
 
 type BlockSection = 'header' | 'skills' | 'experience' | 'education' | 'extra' | 'pending'
@@ -50,17 +64,23 @@ export function ResumePreview({
   sections,
   blocks: extraBlocks,
   highlightId = '',
+  accentColor,
+  sectionOrder,
+  onPick,
+  onPages,
+  scale: fixedScale,
+  onScale,
 }: ResumePreviewProps) {
   const paper = pageSpec(pageSize)
   const pad = pads[marginId]
   const innerWidth = paper.width - pad.h * 2
   const innerHeight = paper.height - pad.v * 2
   const pageClass = `resume-page is-${templateId} is-font-${fontId} is-margin-${marginId}`
-  const pageStyle: CSSProperties = { fontSize: `${fontSize}pt`, lineHeight }
+  const pageStyle = { fontSize: `${fontSize}pt`, lineHeight, ...(accentColor ? { '--accent': accentColor } : {}) } as CSSProperties
   const sheetStyle: CSSProperties = { ...pageStyle, width: paper.width, minHeight: paper.height }
   const blocks = useMemo(
-    () => previewBlocks(snapshot, templateId, innerWidth, enabledSections, sections, extraBlocks, highlightId, skillsFormat),
-    [snapshot, templateId, innerWidth, enabledSections, sections, extraBlocks, highlightId, skillsFormat],
+    () => previewBlocks(snapshot, templateId, innerWidth, enabledSections, sections, extraBlocks, highlightId, skillsFormat, sectionOrder),
+    [snapshot, templateId, innerWidth, enabledSections, sections, extraBlocks, highlightId, skillsFormat, sectionOrder],
   )
   const rail = templateId === 'sidebar' && blocks.some((block) => block.section === 'skills') && blocks.some((block) => block.section === 'experience')
   const measureRef = useRef<HTMLDivElement>(null)
@@ -83,6 +103,10 @@ export function ResumePreview({
     setPages((current) => (samePages(current, next) ? current : next))
   }, [blocks, rail, templateId, fontId, fontSize, lineHeight, marginId, pageSize, innerHeight])
 
+  useEffect(() => {
+    if (ready) onPages?.(pages.length)
+  }, [ready, pages.length, onPages])
+
   useLayoutEffect(() => {
     const frame = frameRef.current
     const pane = frame?.parentElement
@@ -92,7 +116,9 @@ export function ResumePreview({
       const pad = (parseFloat(styles.paddingLeft) || 0) + (parseFloat(styles.paddingRight) || 0)
       const available = pane.clientWidth - pad
       const raw = available / paper.width
-      const scale = Math.round(Math.min(maxZoom, Math.max(minZoom, raw)) * 100) / 100
+      const fitted = Math.round(Math.min(maxZoom, Math.max(minZoom, raw)) * 100) / 100
+      onScale?.(fitted)
+      const scale = fixedScale ?? fitted
       const stack = frame.querySelector('.sheet-stack')
       const height = Math.ceil((stack instanceof HTMLElement ? stack.offsetHeight : paper.height) * scale)
       setZoom((current) => (current.scale === scale && current.height === height ? current : { scale, height }))
@@ -101,10 +127,16 @@ export function ResumePreview({
     const observer = new ResizeObserver(fit)
     observer.observe(pane)
     return () => observer.disconnect()
-  }, [paper.width, paper.height, pages, blocks])
+  }, [paper.width, paper.height, pages, blocks, fixedScale, onScale])
+
+  function pick(event: MouseEvent<HTMLDivElement>) {
+    if (!onPick) return
+    const target = (event.target as HTMLElement).closest<HTMLElement>('[data-ref]')
+    if (target?.dataset.ref) onPick(target.dataset.ref)
+  }
 
   return (
-    <div ref={frameRef} className="sheet-zoom" style={{ width: paper.width * zoom.scale, height: zoom.height }}>
+    <div ref={frameRef} className="sheet-zoom" style={{ width: paper.width * zoom.scale, height: zoom.height }} onClick={onPick ? pick : undefined}>
     <div className="sheet-stack" style={{ width: paper.width, transform: `scale(${zoom.scale})` }}>
       <div ref={measureRef} className={`${pageClass} sheet-measure-root`} style={pageStyle} aria-hidden="true">
         {blocks.map((block) => (
@@ -133,6 +165,7 @@ function previewBlocks(
   extraBlocks: SnapshotBlock[],
   highlightId: string,
   skillsFormat: 'list' | 'comma',
+  sectionOrder?: string[],
 ): Block[] {
   const enabled = new Set(enabledSections)
   const side = 168
@@ -169,7 +202,7 @@ function previewBlocks(
       'header',
       'header',
       false,
-      <header className="resume-head">
+      <header className="resume-head" data-ref="header">
         {name ? <h1 className="resume-name">{name}</h1> : null}
         {contact.length > 0 ? (
           <p className="resume-contact">
@@ -178,7 +211,11 @@ function previewBlocks(
             ))}
           </p>
         ) : null}
-        {summary ? <p className="resume-summary">{summary}</p> : null}
+        {summary ? (
+          <p className="resume-summary" data-ref="summary">
+            {summary}
+          </p>
+        ) : null}
       </header>,
     ))
   }
@@ -186,26 +223,32 @@ function previewBlocks(
   if (snapshot.placeholder) return [...blocks, emptyLinkBlock(block)]
 
   const education = enabled.has('education') ? snapshot.education?.filter(hasStudy) ?? [] : []
+  // Each body section's blocks, then laid out in the CV's section order.
+  const groups = new Map<string, Block[]>()
   if (showExperience) {
-    blocks.push(headingBlock(block, 'experience', sectionLabel(sections, 'experience', 'Experience')))
+    const group = [headingBlock(block, 'experience', sectionLabel(sections, 'experience', 'Experience'))]
     const companies = new Map<string, Snapshot['roles']>()
     snapshot.roles.forEach((role) => {
       const key = role.company.trim().toLocaleLowerCase() || role.id
-      const group = companies.get(key) ?? []
-      group.push(role)
-      companies.set(key, group)
+      const roles = companies.get(key) ?? []
+      roles.push(role)
+      companies.set(key, roles)
     })
-    companies.forEach((roles) => blocks.push(companyBlock(block, roles, templateId, highlightId)))
+    companies.forEach((roles) => group.push(companyBlock(block, roles, templateId, highlightId)))
+    groups.set('experience', group)
   }
   if (education.length > 0) {
-    blocks.push(headingBlock(block, 'education', sectionLabel(sections, 'education', 'Education')))
-    education.forEach((entry) => blocks.push(studyBlock(block, entry, templateId)))
+    groups.set('education', [
+      headingBlock(block, 'education', sectionLabel(sections, 'education', 'Education')),
+      ...education.map((entry) => studyBlock(block, entry, templateId)),
+    ])
   }
-  if (skills.length > 0) blocks.push(skillsBlock(block, skills, sectionLabel(sections, 'skills', 'Skills'), skillsFormat))
+  if (skills.length > 0) groups.set('skills', [skillsBlock(block, skills, sectionLabel(sections, 'skills', 'Skills'), skillsFormat)])
   for (const extra of extraBlocks) {
-    if (!enabled.has(extra.id) || extra.entries.length === 0) continue
-    blocks.push(extraBlock(block, extra))
+    if (!enabled.has(extra.id) || extra.entries.length === 0 || groups.has(extra.id)) continue
+    groups.set(extra.id, [extraBlock(block, extra)])
   }
+  for (const id of orderSections([...groups.keys()], sectionOrder)) blocks.push(...(groups.get(id) ?? []))
 
   if (!showExperience && education.length === 0 && skills.length === 0 && !blocks.some((item) => item.section === 'extra')) {
     blocks.push(emptyLinkBlock(block))
@@ -247,7 +290,7 @@ function skillsBlock(
     'skills',
     'skills',
     false,
-    <section className="resume-section resume-skills">
+    <section className="resume-section resume-skills" data-ref="section:skills">
       <h2 className="section-label">{label}</h2>
       {format === 'comma' ? <p className="skill-list-comma">{skills.join(', ')}</p> : (
         <ul className="skill-list">
@@ -266,11 +309,11 @@ function extraBlock(
     extra.id,
     'extra',
     false,
-    <section className="resume-section">
+    <section className="resume-section" data-ref={`section:${extra.id}`}>
       <h2 className="section-label">{extra.name}</h2>
       {extra.entries.some((entry) => entry.title || entry.bullets) ? (
         extra.entries.map((entry) => (
-          <div key={entry.id} className="resume-role">
+          <div key={entry.id} className="resume-role" data-ref={`entry:${entry.id}`}>
             <div className="role-head">
               <div>
                 {entry.title ? <div className="role-title">{entry.title}</div> : null}
@@ -294,7 +337,9 @@ function extraBlock(
       ) : (
         <ul className="resume-bullets">
           {extra.entries.map((entry) => (
-            <li key={entry.id}>{entry.text}</li>
+            <li key={entry.id} data-ref={`entry:${entry.id}`}>
+              {entry.text}
+            </li>
           ))}
         </ul>
       )}
@@ -311,7 +356,7 @@ function headingBlock(
     `${section}-heading`,
     section,
     true,
-    <section className={`resume-section resume-${section}`}>
+    <section className={`resume-section resume-${section}`} data-ref={`section:${section}`}>
       <h2 className="section-label">{label}</h2>
     </section>,
   )
@@ -334,7 +379,7 @@ function companyBlock(
         const dates = formatRange(role.start, role.end)
         const bullets = role.bullets.filter((bullet) => bullet.text)
         return (
-          <div className="company-role" key={role.id}>
+          <div className="company-role" key={role.id} data-ref={`role:${role.id}`}>
             <div className="role-head">
               {templateId === 'timeline' ? <div className="role-dates">{dates}</div> : null}
               <div>
@@ -346,7 +391,9 @@ function companyBlock(
             {bullets.length > 0 ? (
               <ul className="resume-bullets">
                 {bullets.map((bullet) => (
-                  <li key={bullet.id} className={bullet.id === highlightId ? 'is-hit' : undefined}>{bullet.text}</li>
+                  <li key={bullet.id} className={bullet.id === highlightId ? 'is-hit' : undefined} data-ref={`bullet:${bullet.id}`}>
+                    {bullet.text}
+                  </li>
                 ))}
               </ul>
             ) : null}
@@ -367,7 +414,7 @@ function studyBlock(
     entry.id,
     'education',
     false,
-    <div className="resume-role">
+    <div className="resume-role" data-ref={`edu:${entry.id}`}>
       <div className="role-head">
         {templateId === 'timeline' ? <div className="role-dates">{dates}</div> : null}
         <div>

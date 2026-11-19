@@ -59,6 +59,8 @@ import type { DocumentStore } from '../ports/documentStore'
 import { documentView, patchDocument, type EditableDocument } from './document'
 import { APP_URL, CV_GUIDE, MODEL_GUIDE } from './guide'
 import { reviewCv } from '../domain/cvReview'
+import { DEFAULT_ACCENT, accentColors, fontIds } from '../domain/fonts'
+import { templateIds } from '../domain/templates'
 import type { PatchOperation } from './jsonPatch'
 
 export type ToolContext = { store: DocumentStore; now?: () => Date }
@@ -946,8 +948,8 @@ export function registerTools(server: McpServer, { store, now: clock = () => new
           .describe('Only these entries (roles, studies, projects…). Default: every role and study, plus entries of other sections that have chosen experiences.'),
         section_ids: z.array(z.string()).optional().describe('Other sections to include (ids or names), in order. Default: those with chosen experiences.'),
         include_education: z.boolean().default(true),
-        template: z.enum(['classic', 'timeline', 'sidebar']).optional(),
-        font: z.enum(['times', 'georgia', 'palatino', 'sans']).optional(),
+        template: z.enum(templateIds).optional().describe('classic or modern (single column) are the safest for screening'),
+        font: z.enum(fontIds).optional(),
         application_id: z.string().optional().describe('Attach the generated version to this application'),
       }),
     },
@@ -995,7 +997,7 @@ export function registerTools(server: McpServer, { store, now: clock = () => new
     'update_cv',
     {
       title: 'Editar CV',
-      description: "Changes a CV's name, target job, summary or style (template, font, size, spacing, margins, paper, skills format). Call build_cv_version afterwards to regenerate it.",
+      description: "Changes a CV's name, target job, summary or style (template, font, size, spacing, margins, paper, skills format, accent color, section order). Call build_cv_version afterwards to regenerate it.",
       inputSchema: z.object({
         cv_id: z.string(),
         title: z.string().optional(),
@@ -1003,17 +1005,27 @@ export function registerTools(server: McpServer, { store, now: clock = () => new
         company: z.string().optional(),
         posting: z.string().optional(),
         summary: z.string().optional(),
-        template: z.enum(['classic', 'timeline', 'sidebar']).optional(),
-        font: z.enum(['times', 'georgia', 'palatino', 'sans']).optional(),
+        template: z.enum(templateIds).optional().describe('classic or modern (single column) are the safest for screening'),
+        font: z.enum(fontIds).optional(),
         font_size: z.union([z.literal(9), z.literal(10), z.literal(11), z.literal(12), z.literal(14)]).optional(),
         line_height: z.union([z.literal(1), z.literal(1.15), z.literal(1.5), z.literal(2)]).optional(),
         margins: z.enum(['narrow', 'normal', 'wide']).optional(),
         page_size: z.enum(['letter', 'a4']).optional(),
         skills_format: z.enum(['list', 'comma']).optional(),
+        accent_color: z
+          .string()
+          .regex(/^#[0-9a-fA-F]{6}$/)
+          .nullable()
+          .optional()
+          .describe(`Color of the name, headings and rules; null for none. Suggested: ${accentColors.map((color) => `${color.id} (${color.name})`).join(', ')}`),
+        section_order: z
+          .array(z.string())
+          .optional()
+          .describe('Body sections in display order, by id: experience, education, skills and other section ids. Missing ones follow.'),
       }),
       annotations: { idempotentHint: true },
     },
-    async ({ cv_id, template, font, font_size, line_height, margins, page_size, skills_format, ...meta }) => {
+    async ({ cv_id, template, font, font_size, line_height, margins, page_size, skills_format, accent_color, section_order, ...meta }) => {
       const document = await open()
       if (!document.cvs.some((cv) => cv.id === cv_id)) throw new Error(`No existe el CV ${cv_id}.`)
       const patch = Object.fromEntries(
@@ -1026,6 +1038,8 @@ export function registerTools(server: McpServer, { store, now: clock = () => new
           marginId: margins,
           pageSize: page_size,
           skillsFormat: skills_format,
+          accentColor: accent_color === null ? DEFAULT_ACCENT : accent_color?.toLowerCase(),
+          sectionOrder: section_order,
         }).filter(([, value]) => value !== undefined),
       )
       await store.save({ ...document, cvs: document.cvs.map((cv) => (cv.id === cv_id ? { ...cv, ...patch } : cv)) })

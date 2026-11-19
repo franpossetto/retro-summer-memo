@@ -4261,7 +4261,66 @@ textarea:focus-visible {
 
 .sheet-side {
   padding-left: 16px;
-  border-left: 1px solid #d0d7de;
+  border-left: 1px solid color-mix(in srgb, var(--accent, #8c959f) 40%, #fff);
+}
+
+/* Modern: one column, the name large on the left, headings with a hairline in the accent color. */
+.resume-page.is-modern .resume-head {
+  padding-bottom: 14px;
+  border-bottom: 2px solid var(--accent, #1f2328);
+}
+
+.resume-page.is-modern .resume-name {
+  font-size: 2.1em;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  line-height: 1.1;
+}
+
+.resume-page.is-modern .resume-contact {
+  margin-top: 6px;
+  color: #3d444d;
+}
+
+.resume-page.is-modern .resume-contact span + span::before {
+  content: '  |  ';
+  color: color-mix(in srgb, var(--accent, #1f2328) 45%, #fff);
+  white-space: pre;
+}
+
+.resume-page.is-modern .resume-summary {
+  margin-top: 12px;
+  color: #24292f;
+}
+
+.resume-page.is-modern .section-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-bottom: 0;
+  border-bottom: none;
+  font-size: 0.78em;
+  font-weight: 700;
+  font-variant: normal;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.resume-page.is-modern .section-label::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: color-mix(in srgb, var(--accent, #1f2328) 35%, #fff);
+}
+
+.resume-page.is-modern .resume-role > .role-title {
+  color: var(--accent, inherit);
+  letter-spacing: 0.03em;
+}
+
+.resume-page.is-modern .role-dates {
+  color: #57606a;
+  font-size: 0.92em;
 }
 
 .sheet-beside .resume-skills,
@@ -4319,7 +4378,16 @@ textarea:focus-visible {
   font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
 }
 
+.resume-page.is-font-garamond {
+  font-family: 'EB Garamond Variable', Garamond, 'Times New Roman', serif;
+}
+
+.resume-page.is-font-inter {
+  font-family: 'Inter Variable', Inter, system-ui, sans-serif;
+}
+
 .resume-name {
+  color: var(--accent, inherit);
   font-size: 1.4em;
   font-weight: 700;
   letter-spacing: 0.02em;
@@ -4338,6 +4406,12 @@ textarea:focus-visible {
 .resume-contact {
   margin-top: 4px;
   font-size: 0.875em;
+}
+
+/* Each contact item stays whole (a URL never breaks mid-way); lines break between items. */
+.resume-contact span {
+  display: inline-block;
+  white-space: nowrap;
 }
 
 .resume-contact span + span::before {
@@ -4413,7 +4487,7 @@ textarea:focus-visible {
 
 .resume-page.is-timeline .resume-head {
   padding-bottom: 12px;
-  border-bottom: 3px solid #000;
+  border-bottom: 3px solid var(--accent, #000);
 }
 
 .resume-page.is-timeline .resume-name {
@@ -4453,7 +4527,8 @@ textarea:focus-visible {
 
 .section-label {
   padding-bottom: 2px;
-  border-bottom: 1px solid #000;
+  border-bottom: 1px solid var(--accent, #000);
+  color: var(--accent, inherit);
   font-size: 0.875em;
   font-weight: 600;
   font-variant: small-caps;
