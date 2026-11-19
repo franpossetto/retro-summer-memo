@@ -436,7 +436,7 @@ function ApplicationList({
       </thead>
       <tbody>
         {applications.map((application) => {
-          const on = application.appliedOn || application.createdAt.slice(0, 10)
+          const on = application.appliedOn || application.createdAt
           const cv = application.attachment?.kind === 'cv' ? cvById.get(application.attachment.cvId) : undefined
           return (
             <tr

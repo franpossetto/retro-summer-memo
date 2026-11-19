@@ -73,8 +73,8 @@ export function ConsentScreen({ consent, authorizationId, email }: { consent: OA
               <strong>{state.request.clientName || 'Esta app'}</strong> quiere acceder a tu cuenta (<strong>{email}</strong>) para:
             </p>
             <ul className="consent-list">
-              <li>Ver tu perfil, tus experiencias y tus CVs.</li>
-              <li>Buscar, crear y actualizar tus postulaciones y sus notas.</li>
+              <li>Ver, crear, editar y borrar tu perfil, tus secciones y experiencias y tus CVs.</li>
+              <li>Ver, crear, editar y borrar tus postulaciones y sus estados.</li>
             </ul>
             <dl className="consent-meta">
               <dt>Vuelve a</dt>

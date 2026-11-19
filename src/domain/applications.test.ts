@@ -110,9 +110,11 @@ describe('application lifecycle', () => {
       company: 'Acme',
       statusId: 'sent',
       postingKey: 'linkedin:42',
-      appliedOn: '2026-05-01',
+      // Not guessed from the server's clock: shown from createdAt, in the user's time zone.
+      appliedOn: '',
       createdAt: '2026-05-01T12:00:00.000Z',
     })
+    expect(createApplication({ company: 'Acme', title: 'X', appliedOn: '2026-04-30' }, statuses).appliedOn).toBe('2026-04-30')
     expect(application.events.map((event) => [event.kind, event.statusId, event.text])).toEqual([
       ['status', 'sent', ''],
       ['note', 'sent', 'Referral'],

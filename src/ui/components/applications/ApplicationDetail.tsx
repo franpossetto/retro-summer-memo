@@ -94,7 +94,7 @@ export function ApplicationDetail({
   const attachment = application.attachment
   const attachedCv = attachment?.kind === 'cv' ? cvs.find((cv) => cv.id === attachment.cvId) : undefined
   const attachedVersionId = attachment?.kind === 'cv' ? attachment.versionId : ''
-  const appliedOn = application.appliedOn || application.createdAt.slice(0, 10)
+  const appliedOn = application.appliedOn || application.createdAt
   const upcoming = upcomingEvents(application)
   const scheduled = new Set(upcoming.map((event) => event.id))
   const history = application.events.filter((event) => !scheduled.has(event.id)).reverse()

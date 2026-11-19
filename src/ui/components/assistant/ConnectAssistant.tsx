@@ -90,7 +90,7 @@ export function ConnectAssistant({
         <div className="assistant-prompts">
           <PromptHint label="" prompt={prompts.updateInfo} />
           <PromptHint label="" prompt={prompts.buildCv} />
-          <PromptHint label="" prompt={prompts.news('Acme', 'el challenge técnico')} />
+          <PromptHint label="" prompt={prompts.news('Acme', 'Challenge técnico')} />
         </div>
 
         <h3 className="assistant-subtitle">Conectados</h3>

@@ -523,7 +523,7 @@ export function registerTools(server: McpServer, { store, now: clock = () => new
         url: z.string().optional(),
         location: z.string().optional(),
         posting: z.string().optional().describe('Full posting text, if available'),
-        applied_on: isoDate.optional().describe('Defaults to today'),
+        applied_on: isoDate.optional().describe("The user's local date (YYYY-MM-DD); omitted = the moment it was recorded"),
         note: z.string().optional().describe('First note: referral, salary asked, contact…'),
         confirm_duplicate: z.boolean().default(false),
       }),

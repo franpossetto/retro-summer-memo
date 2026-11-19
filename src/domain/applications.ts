@@ -115,7 +115,8 @@ export function createApplication(
     postingKey: postingKey(url),
     posting: input.posting ?? '',
     location: (input.location ?? '').trim(),
-    appliedOn: input.appliedOn ?? at.slice(0, 10),
+    // Unknown unless given: "today" depends on the user's time zone, which the server does not know.
+    appliedOn: input.appliedOn ?? '',
     statusId: status.id,
     attachment: input.attachment ?? null,
     events,

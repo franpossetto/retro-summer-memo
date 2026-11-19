@@ -29,7 +29,7 @@ export function DuplicateAlert({
       <strong>{related ? 'Otras postulaciones parecidas' : headline[top.reason](top.application.company)}</strong>
       <ul>
         {matches.slice(0, 5).map(({ application, reason }) => {
-          const on = application.appliedOn || application.createdAt.slice(0, 10)
+          const on = application.appliedOn || application.createdAt
           return (
             <li key={application.id}>
               <span className="duplicate-what">

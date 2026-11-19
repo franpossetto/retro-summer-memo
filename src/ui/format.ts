@@ -5,11 +5,12 @@ const dayFormat = new Intl.DateTimeFormat(LOCALE, { day: 'numeric', month: 'shor
 const dateTimeFormat = new Intl.DateTimeFormat(LOCALE, { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })
 const relativeFormat = new Intl.RelativeTimeFormat(LOCALE, { numeric: 'auto' })
 
-/** `yyyy-mm-dd` → "18 nov 2026". */
-export function formatDay(ymd: string): string {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd)
-  if (!match) return ''
-  return dayFormat.format(new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3])))
+/** `yyyy-mm-dd` (a calendar day) or an ISO timestamp (its local day) → "18 nov 2026". */
+export function formatDay(value: string): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value)
+  if (match) return dayFormat.format(new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3])))
+  const time = Date.parse(value)
+  return Number.isNaN(time) ? '' : dayFormat.format(time)
 }
 
 /** ISO timestamp → "18 nov, 14:30". */
