@@ -28,14 +28,36 @@ export type ApplicationEvent = {
   at: string
   /**
    * `status`: the application moved into `statusId`. `note`: something added while in `statusId`.
-   * Any other kind is accepted too (interview, call, email, task…); with `at` in the future it is
-   * something coming up.
+   * `debrief`: how a step went (`text`), with the details in `debrief`. Any other kind is accepted
+   * too (interview, call, email, task…); with `at` in the future it is something coming up.
    */
-  kind: 'status' | 'note' | (string & {})
+  kind: 'status' | 'note' | 'debrief' | (string & {})
   statusId: string
   text: string
+  /** What happened in an interview or call, told by the user. */
+  debrief?: Debrief
   extra?: Extra
 }
+
+/** The user's own account of a step (a call, an interview, a challenge review). */
+export type Debrief = {
+  /** How it felt, 1 (mal) to 5 (excelente); null when not said. */
+  rating: number | null
+  /** Who was there: "Laura (RRHH)", "el CTO". */
+  people: string[]
+  /** What they asked or asked for. */
+  asked: string[]
+  /** What the user said: answers, points made, numbers given. */
+  said: string[]
+  /** What the user did not say, held back or forgot. */
+  unsaid: string[]
+  /** What they liked. */
+  liked: string[]
+  /** Doubts or objections they raised, what did not land. */
+  concerns: string[]
+}
+
+export const debriefLists = ['people', 'asked', 'said', 'unsaid', 'liked', 'concerns'] as const satisfies readonly (keyof Debrief)[]
 
 export type Application = {
   id: string
@@ -169,6 +191,95 @@ export function removeApplicationNote(application: Application, eventId: string,
   const events = application.events.filter((event) => event.id !== eventId || event.kind === 'status')
   if (events.length === application.events.length) return application
   return { ...application, events, updatedAt: now.toISOString() }
+}
+
+export type DebriefInput = Partial<Debrief> & {
+  /** The debrief to change; a new one is added when missing. */
+  id?: string
+  /** Step it belongs to; defaults to the step the application is in. */
+  statusId?: string
+  /** When it happened (ISO); defaults to now. */
+  at?: string
+  /** How it went, in the user's words. */
+  text?: string
+}
+
+export function emptyDebrief(): Debrief {
+  return { rating: null, people: [], asked: [], said: [], unsaid: [], liked: [], concerns: [] }
+}
+
+/**
+ * Adds how a step went, or changes one already told (only the fields given change). Returns the
+ * application and the debrief's event id.
+ */
+export function saveDebrief(application: Application, input: DebriefInput, now: Date = new Date()): { application: Application; eventId: string } {
+  const existing = input.id ? application.events.find((event) => event.id === input.id) : undefined
+  if (input.id && !existing) throw new Error(`No existe el evento ${input.id} en esta postulación.`)
+  if (existing?.kind === 'status') throw new Error('Un cambio de estado no lleva bitácora: agregá una nueva.')
+  const base = existing?.debrief ?? emptyDebrief()
+  const debrief: Debrief = { ...base, rating: input.rating === undefined ? base.rating : readRating(input.rating) }
+  for (const key of debriefLists) if (input[key] !== undefined) debrief[key] = cleanList(input[key])
+  const event: ApplicationEvent = {
+    ...(existing ?? { id: crypto.randomUUID(), kind: 'debrief', text: '' }),
+    at: input.at ?? existing?.at ?? now.toISOString(),
+    statusId: input.statusId ?? existing?.statusId ?? application.statusId,
+    text: input.text === undefined ? existing?.text ?? '' : input.text.trim(),
+    debrief,
+  }
+  const events = withEvents(application.events.filter((item) => item.id !== event.id), [event])
+  return { application: { ...application, events, updatedAt: now.toISOString() }, eventId: event.id }
+}
+
+/** True when the debrief says nothing yet. */
+export function isEmptyDebrief(debrief: Debrief): boolean {
+  return debrief.rating === null && debriefLists.every((key) => debrief[key].length === 0)
+}
+
+export type StageVisit = {
+  statusId: string
+  /** When the application got there (ISO). */
+  since: string
+  /** What happened while there: notes, debriefs, past calls… in date order. */
+  events: ApplicationEvent[]
+  current: boolean
+}
+
+/**
+ * The process told step by step: each time the application moved, with what happened in that
+ * step. Things scheduled after `now` are left out (they are coming up, not history).
+ */
+export function stageVisits(application: Application, now: Date = new Date()): StageVisit[] {
+  const cutoff = now.toISOString()
+  const visits: StageVisit[] = []
+  for (const event of application.events) {
+    if (event.at > cutoff) continue
+    if (event.kind === 'status') {
+      visits.push({ statusId: event.statusId, since: event.at, events: [], current: false })
+      continue
+    }
+    const visit = visits.findLast((item) => item.statusId === event.statusId)
+    if (visit) visit.events.push(event)
+    else visits.push({ statusId: event.statusId, since: event.at, events: [event], current: false })
+  }
+  let current = visits.findLastIndex((visit) => visit.statusId === application.statusId)
+  if (current < 0) {
+    visits.push({ statusId: application.statusId, since: application.updatedAt || application.createdAt, events: [], current: false })
+    current = visits.length - 1
+  }
+  visits[current].current = true
+  return visits
+}
+
+/**
+ * Open steps still ahead in the pipeline: after the current one, not visited yet. None once the
+ * process is closed (offer, rejected, withdrawn).
+ */
+export function stepsAhead(application: Application, statuses: ApplicationStatus[], visits: StageVisit[]): ApplicationStatus[] {
+  const index = statuses.findIndex((status) => status.id === application.statusId)
+  const current = statuses[index]
+  if (!current || current.kind !== 'active') return []
+  const visited = new Set(visits.map((visit) => visit.statusId))
+  return statuses.slice(index + 1).filter((status) => status.kind === 'active' && !visited.has(status.id))
 }
 
 export function updateApplication(
@@ -490,7 +601,7 @@ const statusKeys = ['id', 'name', 'color', 'kind']
 const applicationKeys = [
   'id', 'company', 'title', 'url', 'postingKey', 'posting', 'location', 'appliedOn', 'statusId', 'attachment', 'events', 'createdAt', 'updatedAt',
 ]
-const eventKeys = ['id', 'at', 'kind', 'statusId', 'text']
+const eventKeys = ['id', 'at', 'kind', 'statusId', 'text', 'debrief']
 
 export function readAttachment(value: unknown): ApplicationAttachment | null {
   if (!isRecord(value)) return null
@@ -507,7 +618,27 @@ function readEvent(value: unknown): ApplicationEvent[] {
   if (!isRecord(value) || typeof value.id !== 'string') return []
   const kind = readString(value.kind).trim()
   if (!kind) return []
-  return [withExtra({ id: value.id, at: readString(value.at), kind, statusId: readString(value.statusId), text: readString(value.text) }, readExtra(value, eventKeys))]
+  const debrief = readDebrief(value.debrief)
+  const event: ApplicationEvent = { id: value.id, at: readString(value.at), kind, statusId: readString(value.statusId), text: readString(value.text) }
+  return [withExtra(debrief ? { ...event, debrief } : event, readExtra(value, eventKeys))]
+}
+
+export function readDebrief(value: unknown): Debrief | undefined {
+  if (!isRecord(value)) return undefined
+  const debrief: Debrief = { ...emptyDebrief(), rating: readRating(value.rating) }
+  for (const key of debriefLists) debrief[key] = cleanList(value[key])
+  return debrief
+}
+
+function readRating(value: unknown): number | null {
+  const rating = typeof value === 'string' ? Number(value) : value
+  return typeof rating === 'number' && Number.isFinite(rating) ? Math.min(5, Math.max(1, Math.round(rating))) : null
+}
+
+/** Strings, trimmed, without blanks. A single string becomes one item per line. */
+function cleanList(value: unknown): string[] {
+  const items = typeof value === 'string' ? value.split('\n') : Array.isArray(value) ? value : []
+  return items.flatMap((item) => (typeof item === 'string' && item.trim() ? [item.trim()] : []))
 }
 
 function readString(value: unknown): string {

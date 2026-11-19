@@ -2,15 +2,23 @@
 
 Build tailored CVs from a graph of your experience, and track every application you send:
 which CV (exact version) went where, what step each process is in, and whether you already
-applied to that posting or role before.
+applied to that posting or role before. Each application opens as a page with the process step by
+step (how each call or interview went: what they asked, what you said and did not say, what they
+liked) next to everything known about the company: logo, what it does, mission, vision, values,
+and dated notes on news, layoffs, hiring, other openings and how others' interviews went.
 
 It is driven by your assistant (ChatGPT, Claude, Gemini…) through an MCP server: "Actualizá mi info
-en Resume", "Armemos el CV para <link>", "Me confirmaron de Acme, paso al challenge el 20/3". The app
-is the engine and the viewer, and shows the assistant's changes live.
+en Resume", "Armemos el CV para <link>", "Me confirmaron de Acme, paso al challenge el 20/3",
+"Recién salí de la call con RRHH, te cuento…", "Investigá Acme". The app is the engine and the
+viewer, and shows the assistant's changes live.
 
 | Applications | A CV built for a posting |
 | --- | --- |
 | ![Applications](docs/screenshots/05-applications.jpg) | ![CV preview](docs/screenshots/13-cv-preview.jpg) |
+
+| An application: the process and the company | How each step went, and what is known about the company |
+| --- | --- |
+| ![Application page](docs/screenshots/06-application-detail.jpg) | ![Debriefs and company notes](docs/screenshots/07-application-history.jpg) |
 
 More in [docs/screenshots](docs/screenshots).
 
@@ -88,7 +96,8 @@ MCP server at **`https://retro-summer-memo.com/mcp`**: `vercel.json` forwards it
 
 - The tools live in `src/mcp` and work on the whole document through the `DocumentStore` port, so
   they change data exactly like the app (same domain code, same incremental saves). The model the
-  assistant sees: profile → sections → entries → experiences → CVs → applications.
+  assistant sees: profile → sections → entries → experiences → CVs → applications ↔ companies
+  (matched by name).
   - Content: `get_profile`, `update_profile`, `list_sections`, `save_section`, `delete_section`,
     `save_entry`, `delete_entry` (one CRUD for every section: experience = roles, education,
     projects, or any section the user adds), `list_experiences`, `save_experience` (linked to the
@@ -98,12 +107,20 @@ MCP server at **`https://retro-summer-memo.com/mcp`**: `vercel.json` forwards it
     review: length, summary, results, wording, keywords backed by the bank), `update_cv`,
     `build_cv_version`, `delete_cv`.
   - Applications: `check_duplicates`, `create_application`, `move_application`, `add_note`,
-    `update_application`, `delete_application`, `delete_status`, `search_applications`,
-    `get_application`.
+    `save_debrief` (how a step went: rating, people, asked, said, unsaid, liked, concerns),
+    `delete_event`, `update_application`, `delete_application`, `delete_status`,
+    `search_applications`, `get_application`.
+  - Companies: `get_company` (info, notes, and the user's applications to it with their debriefs),
+    `save_company` (website, logo, about, mission, vision, values, extra), `save_company_note`
+    (news, hiring, layoff, role, interview, culture, salary, funding… with date and source),
+    `delete_company_note`, `delete_company`.
   - Anything else: `describe_model`, `get_document`, `update_document` (JSON Patch, `[id=…]` paths).
-  - Prompts: `actualizar-mi-info`, `armar-cv`, `novedad`.
-- Everything is open: every entity keeps extra data under `extra`, status and event kinds are
+  - Prompts: `actualizar-mi-info`, `armar-cv`, `como-me-fue`, `investigar-empresa`,
+    `preparar-entrevista`, `novedad`.
+- Everything is open: every entity keeps extra data under `extra`, status, event and note kinds are
   free, events dated in the future are "coming up".
+- Logos: the image URL saved for the company, else its website's icon (Google's favicon service,
+  requested by the browser with no referrer), else its initials.
 - Auth: Supabase Auth's OAuth 2.1 server with dynamic client registration. Clients are sent to
   `/oauth/consent` (`src/ui/Consent.tsx`); tools run as the signed-in user, so RLS applies. The app
   lists connected assistants and can disconnect them.

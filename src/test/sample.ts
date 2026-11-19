@@ -1,4 +1,5 @@
-import { createApplication, defaultApplicationStatuses, moveApplication, type ApplicationStatus } from '../domain/applications'
+import { createApplication, defaultApplicationStatuses, moveApplication, saveDebrief, type ApplicationStatus } from '../domain/applications'
+import { readCompanies } from '../domain/companies'
 import {
   buildResume,
   createSeedDocument,
@@ -96,14 +97,48 @@ export function sampleDocument(): ResumeDocument {
     new Date('2026-03-05T10:00:00.000Z'),
   )
   const globex = createApplication({ company: 'Globex', title: 'Frontend Dev' }, statuses, new Date('2026-04-01T10:00:00.000Z'))
+  const acmeDebriefed = saveDebrief(
+    acme,
+    {
+      text: 'Fue bien, charla de 40 minutos',
+      rating: 4,
+      people: ['Laura (RRHH)'],
+      asked: ['Por qué me quiero ir', 'Expectativa salarial'],
+      said: ['90k'],
+      unsaid: ['Que tengo otra oferta'],
+      liked: ['Que lideré la migración'],
+      concerns: [],
+    },
+    new Date('2026-03-06T15:00:00.000Z'),
+  ).application
   const acmeWithExtras = {
-    ...acme,
+    ...acmeDebriefed,
     extra: { salary: '90k', recruiter: 'Babbage' },
     events: [
-      ...acme.events,
+      ...acmeDebriefed.events,
       { id: 'acme-interview', at: '2099-01-10T10:00:00.000Z', kind: 'interview', statusId: 'hr-call', text: 'Entrevista con el CTO', extra: { place: 'Zoom' } },
     ],
   }
+  // Through the parser, so notes come in their stored order (newest first).
+  const companies = readCompanies([
+    {
+      id: 'company-acme',
+      name: 'Acme Inc.',
+      website: 'acme.com',
+      logo: '',
+      about: 'Engines for everyone.',
+      mission: 'Make engines simple.',
+      vision: 'An engine in every home.',
+      values: ['Ownership', 'Speed'],
+      extra: { industry: 'Machinery', size: '200-500' },
+      notes: [
+        { id: 'note-layoff', kind: 'layoff', date: '2026-01', text: 'Cut 10% of staff', source: 'https://news.example.com/acme', addedAt: '2026-03-02T10:00:00.000Z' },
+        { id: 'note-role', kind: 'role', date: '', text: 'Also hiring a Staff Engineer (Go)', source: '', addedAt: '2026-03-03T10:00:00.000Z', extra: { url: 'https://acme.com/jobs/2' } },
+        { id: 'note-funding', kind: 'funding', date: '2026-02-15', text: 'Series B, 40M', source: 'Crunchbase', addedAt: '2026-03-02T11:00:00.000Z' },
+      ],
+    },
+    { id: 'company-initech', name: 'Initech', website: '', logo: 'https://initech.example/logo.png', about: '', mission: '', vision: '', values: [], notes: [] },
+  ])
 
   return {
     ...seed,
@@ -126,6 +161,7 @@ export function sampleDocument(): ResumeDocument {
     ],
     applications: [acmeWithExtras, globex],
     applicationStatuses: statuses,
+    companies,
   }
 }
 

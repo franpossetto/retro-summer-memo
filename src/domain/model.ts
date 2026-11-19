@@ -1,4 +1,5 @@
 import { defaultApplicationStatuses, type Application, type ApplicationStatus } from './applications'
+import type { Company } from './companies'
 import type { Extra } from './extra'
 import { experienceCatalog } from './catalog'
 import { cloneSeedBank, type Experience } from './experiences'
@@ -251,6 +252,8 @@ export type ResumeDocument = {
   applications: Application[]
   /** Pipeline steps, in order. */
   applicationStatuses: ApplicationStatus[]
+  /** What the user knows about the companies they apply to (matched to applications by name). */
+  companies: Company[]
 }
 
 const builtinSectionDefs: { id: string; name: string }[] = [
@@ -512,6 +515,7 @@ export function createEmptyDocument(): ResumeDocument {
     knowledge: [],
     applications: [],
     applicationStatuses: defaultApplicationStatuses(),
+    companies: [],
     activeCvId: '',
     nodes: [],
     edges: [],
@@ -532,6 +536,7 @@ export function createSeedDocument(): ResumeDocument {
     knowledge: [],
     applications: [],
     applicationStatuses: defaultApplicationStatuses(),
+    companies: [],
     activeCvId: 'seed-cv',
     nodes,
     edges,

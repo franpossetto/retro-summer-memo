@@ -530,7 +530,7 @@ export default function App({ initialDocument, store, account, notice, assistant
   function changeTracker(update: (current: TrackerData) => TrackerData) {
     setDoc((current) => ({
       ...current,
-      ...update({ applications: current.applications, applicationStatuses: current.applicationStatuses }),
+      ...update({ applications: current.applications, applicationStatuses: current.applicationStatuses, companies: current.companies }),
     }))
   }
 
@@ -1025,6 +1025,7 @@ export default function App({ initialDocument, store, account, notice, assistant
         <Applications
           applications={doc.applications}
           statuses={doc.applicationStatuses}
+          companies={doc.companies}
           cvs={doc.cvs}
           onChange={changeTracker}
           onOpenCv={openCvVersion}

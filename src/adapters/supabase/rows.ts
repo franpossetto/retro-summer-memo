@@ -9,6 +9,7 @@ import {
   type Application,
   type ApplicationStatus,
 } from '../../domain/applications'
+import { readCompanies, type Company } from '../../domain/companies'
 import { readExperiences } from '../../domain/experiences'
 import type { Cv, CvVersion, KnowledgeAnswer, ResumeDocument, ResumeEdge, ResumeNode } from '../../domain/model'
 import { parseGraph, parseProfile, parseRoleGraph, parseSnapshot, readEnabled, readSections, readStyle } from '../../domain/parse'
@@ -25,6 +26,8 @@ export const TABLES = [
   'application_statuses',
   'applications',
   'application_events',
+  'companies',
+  'company_notes',
 ] as const
 
 export type TableName = (typeof TABLES)[number]
@@ -43,7 +46,9 @@ export const COLUMNS: Record<TableName, string> = {
   cv_versions: 'id,cv_id,created_at,snapshot,sort',
   application_statuses: 'id,name,color,kind,sort,extra',
   applications: 'id,company,title,url,posting_key,posting,location,applied_on,status_id,attachment,created_at,updated_at,extra',
-  application_events: 'id,application_id,at,kind,status_id,text,extra',
+  application_events: 'id,application_id,at,kind,status_id,text,debrief,extra',
+  companies: 'id,name,website,logo,about,mission,vision,core_values,sort,extra',
+  company_notes: 'id,company_id,kind,happened_on,text,source,added_at,extra',
 }
 
 /** Built versions never change once written, so the diff only looks at which ids exist. */
@@ -53,6 +58,7 @@ const TIMESTAMPS: Partial<Record<TableName, string[]>> = {
   cv_versions: ['created_at'],
   applications: ['created_at', 'updated_at'],
   application_events: ['at'],
+  company_notes: ['added_at'],
 }
 
 const EPOCH = new Date(0).toISOString()
@@ -114,9 +120,38 @@ export function toTables(document: ResumeDocument): Tables {
         kind: event.kind,
         status_id: event.statusId,
         text: event.text,
+        debrief: event.debrief ?? null,
         extra: event.extra ?? {},
       })),
     ),
+    companies: document.companies.map(companyRow),
+    company_notes: document.companies.flatMap((company) =>
+      company.notes.map((note) => ({
+        id: note.id,
+        company_id: company.id,
+        kind: note.kind,
+        happened_on: note.date,
+        text: note.text,
+        source: note.source,
+        added_at: note.addedAt || EPOCH,
+        extra: note.extra ?? {},
+      })),
+    ),
+  }
+}
+
+function companyRow(company: Company, sort: number): Row {
+  return {
+    id: company.id,
+    name: company.name,
+    website: company.website,
+    logo: company.logo,
+    about: company.about,
+    mission: company.mission,
+    vision: company.vision,
+    core_values: company.values,
+    sort,
+    extra: company.extra ?? {},
   }
 }
 
@@ -284,12 +319,37 @@ export function fromTables(tables: Tables, previous?: ResumeDocument): ResumeDoc
           kind: event.kind,
           statusId: event.status_id,
           text: event.text,
+          debrief: event.debrief ?? undefined,
           extra: event.extra,
         })),
       })),
     pipeline,
   )
   const applicationStatuses = withReferencedStatuses(pipeline, applications)
+
+  const notesByCompany = groupBy(tables.company_notes, (row) => String(row.company_id))
+  const companies = readCompanies(
+    bySort(tables.companies).map((row) => ({
+      id: row.id,
+      name: row.name,
+      website: row.website,
+      logo: row.logo,
+      about: row.about,
+      mission: row.mission,
+      vision: row.vision,
+      values: row.core_values,
+      extra: row.extra,
+      notes: (notesByCompany.get(row.id) ?? []).map((note) => ({
+        id: note.id,
+        kind: note.kind,
+        date: note.happened_on,
+        text: note.text,
+        source: note.source,
+        addedAt: note.added_at,
+        extra: note.extra,
+      })),
+    })),
+  )
 
   return {
     profile,
@@ -303,6 +363,7 @@ export function fromTables(tables: Tables, previous?: ResumeDocument): ResumeDoc
     edges: keepCanvas ? previous.edges : active?.edges ?? [],
     applications,
     applicationStatuses,
+    companies,
   }
 }
 

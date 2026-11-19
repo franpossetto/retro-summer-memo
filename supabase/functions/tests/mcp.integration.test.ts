@@ -80,10 +80,15 @@ describe('MCP server', () => {
     const { token } = await newUser()
     const { message: tools } = await rpc(token, 'tools/list')
     expect(tools.result.tools.map((item: { name: string }) => item.name)).toEqual(
-      expect.arrayContaining(['get_document', 'update_document', 'check_duplicates', 'create_application', 'move_application', 'build_cv', 'save_entry', 'list_sections']),
+      expect.arrayContaining([
+        'get_document', 'update_document', 'check_duplicates', 'create_application', 'move_application', 'build_cv', 'save_entry', 'list_sections',
+        'save_debrief', 'get_company', 'save_company', 'save_company_note',
+      ]),
     )
     const { message: prompts } = await rpc(token, 'prompts/list')
-    expect(prompts.result.prompts.map((item: { name: string }) => item.name)).toEqual(['actualizar-mi-info', 'armar-cv', 'novedad'])
+    expect(prompts.result.prompts.map((item: { name: string }) => item.name)).toEqual([
+      'actualizar-mi-info', 'armar-cv', 'como-me-fue', 'investigar-empresa', 'preparar-entrevista', 'novedad',
+    ])
   })
 
   it('does not write before the app has created the account', async () => {
