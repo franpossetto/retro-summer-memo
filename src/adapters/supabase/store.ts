@@ -19,6 +19,8 @@ import {
 const PAGE = 1000
 const WRITE_CHUNK = 100
 const REMOTE_DEBOUNCE_MS = 300
+/** Time after SUBSCRIBED until postgres changes are reliably delivered. */
+const SETTLE_MS = 2500
 
 /**
  * Document stored in Supabase, one set of rows per user (RLS enforces ownership).
@@ -117,12 +119,18 @@ export function createSupabaseStore(client: SupabaseClient, userId: string): Doc
         channel.on('postgres_changes', { event: '*', schema: 'public', table, filter: `user_id=eq.${userId}` }, schedule)
       }
       // Re-read whenever the channel (re)connects: changes made while it was joining or offline
-      // (laptop asleep, network drop) produce no event.
+      // (laptop asleep, network drop) produce no event. Postgres changes start flowing a moment
+      // after SUBSCRIBED, so read once more after that gap too.
+      let settle: ReturnType<typeof setTimeout> | undefined
       channel.subscribe((status) => {
-        if (status === 'SUBSCRIBED') schedule()
+        if (status !== 'SUBSCRIBED') return
+        schedule()
+        clearTimeout(settle)
+        settle = setTimeout(schedule, SETTLE_MS)
       })
       return () => {
         clearTimeout(timer)
+        clearTimeout(settle)
         void client.removeChannel(channel)
       }
     },

@@ -50,6 +50,7 @@ import {
 } from '../domain/model'
 import type { DocumentStore } from '../ports/documentStore'
 import { useDocumentSync } from './useDocumentSync'
+import { deleteExperiences, saveExperience, sectionsView } from '../domain/content'
 import type { OAuthConsent } from '../ports/auth'
 import { ConnectAssistant, Onboarding } from './components/assistant/ConnectAssistant'
 import { useConnectedApps } from './components/assistant/useConnectedApps'
@@ -1037,6 +1038,14 @@ export default function App({ initialDocument, store, account, notice, assistant
           onAnswer={setKnowledge}
           onApplyAnswers={applyKnowledge}
           onBank={updateBank}
+          places={sectionsView(doc).flatMap((section) =>
+            section.entries.map((entry) => ({
+              id: entry.id,
+              label: `${section.name}: ${[entry.title, entry.subtitle].filter(Boolean).join(' — ') || 'Sin título'}`,
+            })),
+          )}
+          onLink={(experienceId, entryId) => setDoc((current) => saveExperience(current, { id: experienceId, entryId }).document)}
+          onDelete={(ids) => setDoc((current) => deleteExperiences(current, ids))}
         />
       ) : !inWorkspace && homeSection === 'library' ? (
         <Library
@@ -1047,6 +1056,7 @@ export default function App({ initialDocument, store, account, notice, assistant
           jobs={doc.profile.jobs}
           onChange={changeSections}
           onChangeRoles={changeRoleGraphs}
+          views={sectionsView(doc)}
         />
       ) : !inWorkspace ? (
         <Home

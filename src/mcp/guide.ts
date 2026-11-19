@@ -1,70 +1,96 @@
-/** What the assistant is told about this server and the data model. */
+/** What the assistant is told about this server, the data model and how to write CVs. */
 
 export const APP_URL = 'https://retro-summer-memo.vercel.app'
 
-export const INSTRUCTIONS = `"Resume" is the user's career workspace: their profile, an experience bank, tailored CVs, and the job applications they track. You can read and change all of it: this server is meant to be the main way the user edits it. The app (${APP_URL}) shows every change live.
+export const INSTRUCTIONS = `"Resume" is the user's career workspace and you are its main interface: their profile, their experience, tailored CVs, and the job applications they track. You can read and change all of it; the app (${APP_URL}) shows every change live.
 
-Typical requests and how to handle them:
-- "Actualizá mi info en Resume" (update my info): call get_document, gather what you know about the user (this conversation, your memory, files or CVs they share), then fill the profile (name, contact fields, jobs with roles and dates, education) and the experience bank (concrete achievements with skills) with update_document. Set knowledge levels for bank items you know about. Summarize what you will write first.
-- "Armemos el CV para <job link>" (build the CV for a posting): read the posting, run check_duplicates and tell the user if they already applied (when, and how it ended), create_application with the posting text, choose the bank experiences that fit, create_cv with application_id, then build_cv_version. Point the user to the app to review and download it.
-- News about a process ("Me confirmaron de <company>, paso a la siguiente etapa, challenge el 20/3"): search_applications by company, move_application to the right status with a note that keeps the dates and details, or add_note if the step did not change.
+How it is organized (call describe_model for the details):
+- Profile: name and contact fields.
+- Sections → entries: Experience (entries are roles: title = role, subtitle = company), Education (title = degree, subtitle = school), Projects, and any section the user wants (Certificaciones, Idiomas…). One CRUD for all: list_sections, save_section, save_entry, delete_entry.
+- Experiences: concrete achievements (one CV bullet each), each linked to the entry where it happened (entry_id), with skills and a level. save_experience, delete_experiences, set_experience_levels.
+- CVs: a selection of experiences/entries/sections built by build_cv. Applications: the job search tracker.
+
+Typical requests:
+- "Actualizá mi info en Resume": gather what you know about the user (conversation, memory, CVs or files they share). Create entries first (roles, studies, projects…), then experiences linked to them with entry_id. One achievement per experience, with numbers when the user gave them. Summarize what you will write first.
+- "Armemos el CV para <link>": read the posting and research the company, run check_duplicates, create_application, then read cv_guidelines and build_cv with the posting text and a tailored summary. Fix what build_cv's review points out, rebuild, and only then show the user.
+- News about a process ("Me confirmaron de X, paso al challenge el 20/3"): search_applications, then move_application with a note, and add a dated event for what is scheduled (update_document).
 
 Rules:
-- Never invent experience, employers, dates, numbers or skills. If something is missing, ask, or leave it empty.
+- Never invent experience, employers, dates, numbers or skills. Missing data: ask, or leave it out.
 - Confirm with the user before deleting anything.
-- Call describe_model before editing parts of the document you have not edited yet in this conversation.
-- Talk to the user in their language (usually Rioplatense Spanish).`
+- Talk to the user in their language (usually Rioplatense Spanish); write each CV in the posting's language.`
 
-export const MODEL_GUIDE = `# Resume document (get_document returns it; update_document edits it with JSON Patch)
+export const MODEL_GUIDE = `# Resume: how the data fits together
 
-profile
-  name: string
-  fields: [{ id, label, value, kind: "email" | "phone" | "text" | "link" }]   contact lines (Email, Phone, Location, LinkedIn, GitHub, Website…)
-  jobs: [{ id, company, roles: [{ id, title, location, start, end }] }]         several roles in one job = promotions
-  education: [{ id, school, degree, start, end }]
-  Dates are free text as printed on a CV: "2021", "Mar 2021", "Present"/"Actualidad".
+profile: { name, fields: [{ id, label, value, kind: email|phone|text|link }], extra }        (get_profile / update_profile)
 
-bank: [{ id, category, text, skills: string[], aliases: string[] }]
-  The experience bank: things the user really did, one achievement per item (text is the CV bullet).
-  CVs are built from these items. category groups them (e.g. "Backend", "Leadership").
-knowledge: [{ id: <bank item id>, level: 0 | 1 | 2 }]
-  How well the user knows each bank item: 0 no experience, 1 personal projects, 2 professional.
+sections: CV sections, each holding entries                                              (list_sections / save_section / delete_section)
+  built-in ids: personal, experience, education, skills, projects; any other section the user adds.
+  The section name is the heading printed on CVs (rename it to change the CV language).
+  entries (save_entry / delete_entry), same shape everywhere:
+    { id, title, subtitle, location, start, end, description, url, extra }
+    experience → a role: title = role, subtitle = company (roles of one company form a job; several = promotions)
+    education  → a study: title = degree, subtitle = school
+    others     → title, subtitle (organization, issuer, level…), dates, description, url
+  Dates are free text as printed: "2021", "Mar 2021", "Actualidad".
 
-sections: [{ id, name, description, active, builtIn }]
-  CV sections catalog. Built-in ids: personal, experience, education, skills, projects. Names are printed on the CV.
+experiences (the "bank"): [{ id, text, entry_id, skills, category, level, extra }]           (list_experiences / save_experience / delete_experiences)
+  One concrete achievement per item, written as the CV bullet. entry_id = where it happened (an entry of any section).
+  level (set_experience_levels): profesional | personal | sin experiencia.
+  Experiences without entry_id cannot be placed on a CV.
 
-cvs: [{ id, title, position, company, posting, summary,
-        templateId: "classic" | "timeline" | "sidebar", fontId: "times" | "georgia" | "palatino" | "sans",
-        fontSize: 9 | 10 | 11 | 12 | 14, lineHeight: 1 | 1.15 | 1.5 | 2, marginId: "narrow" | "normal" | "wide",
-        pageSize: "letter" | "a4", skillsFormat: "list" | "comma", enabledSections: [section id],
-        versions: [{ id, createdAt, snapshot }], nodes, edges }]
-  position/company/posting: the job the CV targets. summary: the profile paragraph at the top.
-  nodes/edges: the CV's graph (person, role, bullet, skills, experience, education, section nodes). Prefer create_cv
-  and build_cv_version over editing graphs by hand. versions are what "Generar" saved; the newest is last.
-activeCvId: the CV open in the app.
+cvs: tailored CVs built from a selection                                                  (build_cv / update_cv / build_cv_version / delete_cv)
+  build_cv takes experience_ids (+ optional entry_ids, section_ids, summary, posting, style) and lays everything
+  out: roles in profile order with their experiences, education, then other sections. Never edit CV graphs by hand.
+  Each build saves a version (what the user reviews and downloads) and returns an outline and a review.
 
-applications: [{ id, company, title, url, posting, location, appliedOn: "YYYY-MM-DD",
-                 statusId: <applicationStatuses id>, attachment: null | { kind: "cv", cvId, versionId ("" = latest) },
-                 events: [{ id, at (ISO), kind: "status" | "note", statusId, text }], createdAt, updatedAt }]
-  events are the history, kept in date order: "status" when it moved to statusId, "note" for what happened in
-  that step, or any other kind you need ("interview", "call", "email", "task"…). An event dated in the future is
-  something coming up (the app shows it as next): e.g. { kind: "interview", at: "2026-03-20T10:00:00Z",
-  text: "Challenge técnico" }.
-applicationStatuses: [{ id, name, color: "#rrggbb", kind }]
-  The user's pipeline, in order. kind: "active", "offer", "rejected", "withdrawn" or anything else (counts as open).
-  An application may use a status id that is not listed yet: the status is created.
+applications: the job search                                     (create_application / move_application / add_note / update_application / delete_application)
+  { id, company, title, url, posting, location, appliedOn, statusId, attachment, events, extra }
+  events: history in date order. kind "status" (moved), "note", or anything else ("interview", "call"…);
+  an event dated in the future is something coming up.
+applicationStatuses: the user's pipeline, in order: { id, name, color, kind: active|offer|rejected|withdrawn|… }.
+  Moving to a status name that does not exist creates it. delete_status re-homes its applications.
 
-# Extra data
-Every entity (profile, fields, jobs, roles, education, bank items, sections, CVs, applications, events, statuses)
-accepts data the model does not define under "extra": salary, recruiter, modality, a job's stack, an achievement's
-metric… e.g. add /applications/[id=…]/extra/salary. Unknown properties you set on an entity end up there too.
+Every entity accepts extra data under "extra" (salary, recruiter, stack, metrics…).
 
-# Editing with update_document
-- Operations: add, remove, replace, move, copy, test (RFC 6902). Paths point into the document above.
-- Address array items by id instead of position: /profile/jobs/[id=<id>]/roles/-  (- appends).
-- New items can omit id, createdAt, updatedAt and at: they are generated.
-- Replace single fields rather than whole objects: a replaced object loses the fields you omit.
-- Use dry_run=true to preview what would change. The result lists changed tables and warnings for anything the
-  app's rules rejected (invalid items are dropped, never saved half-way).
-- Use the dedicated tools when they exist: move_application (keeps history), delete_status (re-homes its
-  applications), create_cv / build_cv_version (build graphs and snapshots).`
+# Anything else: get_document + update_document
+update_document applies JSON Patch to the whole document (get_document shows it). Paths can select items by id:
+/applications/[id=…]/extra/salary. New items may omit ids. Prefer the dedicated tools above when one fits.`
+
+export const CV_GUIDE = `# How to build a CV that gets past screening and lands
+
+Who reads it: first screening software (ATS and AI filters that check whether each skill is backed by experience),
+then a recruiter who scans the top third for a few seconds, then the hiring manager. Write for all three.
+
+1. Understand the job and the company first
+   - From the posting: the real title, must-have skills (exact wording), seniority, domain, the problems they hire for.
+   - The company: product, customers, stage (startup → ownership, speed, 0→1; scale-up → scaling systems and teams;
+     enterprise → reliability, process, stakeholders), stack, values. Use what you can read; do not guess.
+   - Decide the 3–4 messages this CV must prove, and select only what proves them.
+
+2. Select, do not dump
+   - 1 page if under ~10 years of relevant experience, 2 at most otherwise. Not the whole career history.
+   - Recent and relevant roles: 3–6 achievements each. Older or unrelated roles: title, company and dates, 0–2 achievements,
+     or left out (entry_ids) when the history is long.
+   - Include projects, certifications or other sections only when they strengthen this application.
+
+3. Write each achievement as evidence
+   - Action verb + what you did + measurable result (%, time, money, scale, users) + how, when relevant.
+     "Reduje un 40% la latencia de órdenes migrando el cálculo a Redis" beats "Responsable del backend de órdenes".
+   - Put the posting's keywords inside real achievements (context beats lists: AI filters check the connection).
+   - No duties, no pronouns, no buzzwords without proof. One or two lines each. Never invent numbers: ask the user.
+
+4. Summary (top of the page)
+   - 2–4 lines for this role and company: title matching the posting, years and specialty, 2–3 strengths they ask for,
+     one standout result. No generic objectives.
+
+5. Format that parses
+   - Template "classic" (single column), standard headings in the CV's language, consistent dates.
+   - No photos, tables, icons or graphics; no age or marital status; no "references available".
+   - Header: name, the target title, location, email, phone, LinkedIn, GitHub or portfolio.
+   - The CV's language follows the posting (rename section headings with save_section if needed).
+
+6. Check before showing it
+   - build_cv returns a review: length, missing summary, achievements without results, weak wording, recent roles
+     without achievements, keywords from the posting that the user's experience backs but the CV does not show.
+   - Fix what applies, rebuild (cv_id), and tell the user what you emphasized and why for this company.`

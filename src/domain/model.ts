@@ -107,6 +107,10 @@ export type ExperienceSectionNode = GraphNode<ExperienceSectionData, 'experience
 export type EducationNode = GraphNode<EducationData, 'education'>
 export type SectionData = {
   sectionId: string
+  /** Entries of the section to show (all when absent). */
+  entryIds?: string[]
+  /** Experiences to list under those entries (all linked ones when absent). */
+  experienceIds?: string[]
 }
 export type SectionNode = GraphNode<SectionData, 'section'>
 export type ResumeNode = PersonNode | RoleNode | BulletNode | SkillsNode | ExperienceSectionNode | EducationNode | SectionNode
@@ -142,7 +146,28 @@ export type SkillGroup = {
 
 export type TextEntry = {
   id: string
+  /** One-line version, for plain renderings. */
   text: string
+  title?: string
+  subtitle?: string
+  location?: string
+  dates?: string
+  description?: string
+  bullets?: string[]
+}
+
+/** An item of any section: a project, a certification, a language, an award… */
+export type SectionEntry = {
+  id: string
+  title: string
+  /** Organization, issuer, level… */
+  subtitle: string
+  location: string
+  start: string
+  end: string
+  description: string
+  url: string
+  extra?: Extra
 }
 
 export type CatalogSection = {
@@ -151,6 +176,8 @@ export type CatalogSection = {
   description: string
   active: boolean
   builtIn: boolean
+  /** Its items. Experience and Education take theirs from the profile (roles, education). */
+  entries?: SectionEntry[]
   extra?: Extra
 }
 
@@ -585,7 +612,13 @@ export function arrangeNodes(nodes: ResumeNode[], edges: ResumeEdge[]): ResumeNo
   })
 }
 
-export function buildResume(nodes: ResumeNode[], edges: ResumeEdge[], summary: string): Snapshot {
+/** Document data a CV needs besides its graph: entries of sections and the experiences linked to them. */
+export type BuildContext = { sections: CatalogSection[]; bank: Experience[] }
+
+/** Sections whose items come from the profile (or are built in), not from `section.entries`. */
+export const PROFILE_SECTIONS = ['personal', 'experience', 'education', 'skills']
+
+export function buildResume(nodes: ResumeNode[], edges: ResumeEdge[], summary: string, context?: BuildContext): Snapshot {
   const roles = nodes.filter((node): node is RoleNode => isRoleNode(node) && !node.data.pending).sort(byPosition)
   const bulletById = new Map(nodes.filter(isBulletNode).map((node) => [node.id, node]))
   const used = new Set<string>()
@@ -660,18 +693,59 @@ export function buildResume(nodes: ResumeNode[], edges: ResumeEdge[], summary: s
   })
 
   const educationNode = nodes.find(isEducationNode)
+  const sectionContent = context ? sectionBlocks(nodes, context) : { blocks: [], skills: [] }
   const skillGroups = [...groups.values()]
     .filter((group) => group.skills.length > 0)
     .map((group) => ({ ability: group.ability, skills: group.skills }))
   return {
     profile,
     summary: summary.trim(),
-    skills: uniqueSkills(builtRoles.flatMap((role) => role.bullets.flatMap((bullet) => bullet.skills))),
+    skills: uniqueSkills([...builtRoles.flatMap((role) => role.bullets.flatMap((bullet) => bullet.skills)), ...sectionContent.skills]),
     roles: builtRoles,
     education: educationNode ? filledEducation(educationNode.data.entries) : null,
-    blocks: [],
+    blocks: sectionContent.blocks,
     skillGroups,
   }
+}
+
+/** The CV's own sections (projects, certifications…): their chosen entries with linked experiences, and those experiences' skills. */
+function sectionBlocks(nodes: ResumeNode[], { sections, bank }: BuildContext): { blocks: SnapshotBlock[]; skills: string[] } {
+  const skills: string[] = []
+  const blocks = nodes
+    .filter(isSectionNode)
+    .sort(byPosition)
+    .flatMap((node) => {
+      const section = sections.find((item) => item.id === node.data.sectionId)
+      if (!section || PROFILE_SECTIONS.includes(section.id)) return []
+      const entryIds = node.data.entryIds ? new Set(node.data.entryIds) : null
+      const experienceIds = node.data.experienceIds ? new Set(node.data.experienceIds) : null
+      const entries = (section.entries ?? [])
+        .filter((entry) => !entryIds || entryIds.has(entry.id))
+        .flatMap((entry): TextEntry[] => {
+          const title = entry.title.trim()
+          const subtitle = entry.subtitle.trim()
+          const location = entry.location.trim()
+          const description = entry.description.trim()
+          const dates = [entry.start.trim(), entry.end.trim()].filter(Boolean).join(' – ')
+          const linked = bank.filter((item) => item.entryId === entry.id && (!experienceIds || experienceIds.has(item.id)))
+          skills.push(...linked.flatMap((item) => item.skills))
+          const bullets = linked.map((item) => item.text.trim()).filter(Boolean)
+          const text = [[title, subtitle].filter(Boolean).join(' — '), location, dates].filter(Boolean).join(' · ') || description
+          if (!text && bullets.length === 0) return []
+          return [{
+            id: entry.id,
+            text: text || bullets[0],
+            ...(title ? { title } : {}),
+            ...(subtitle ? { subtitle } : {}),
+            ...(location ? { location } : {}),
+            ...(dates ? { dates } : {}),
+            ...(description ? { description } : {}),
+            ...(bullets.length > 0 ? { bullets } : {}),
+          }]
+        })
+      return entries.length > 0 ? [{ id: section.id, name: section.name.trim() || 'Sección', entries }] : []
+    })
+  return { blocks, skills }
 }
 
 function filledEducation(entries: EducationEntry[]) {

@@ -72,13 +72,21 @@ The assistant is the main way to use Resume: "Actualizá mi info en Resume", "Ar
 MCP server at `https://attrxmtjyjzfgopfrgnk.supabase.co/functions/v1/mcp`.
 
 - The tools live in `src/mcp` and work on the whole document through the `DocumentStore` port, so
-  they change data exactly like the app (same domain code, same incremental saves):
-  `describe_model`, `get_document`, `update_document` (JSON Patch over the document; paths can
-  select items by `[id=…]`), `create_cv`, `build_cv_version`, `delete_cv`, `create_application`
-  (refuses likely duplicates until confirmed), `move_application` (creates statuses that do not
-  exist), `add_note`, `update_application`, `delete_application`, `delete_status`,
-  `search_applications`, `get_application`, `check_duplicates`, `list_experiences`.
-  Prompts: `actualizar-mi-info`, `armar-cv`, `novedad`.
+  they change data exactly like the app (same domain code, same incremental saves). The model the
+  assistant sees: profile → sections → entries → experiences → CVs → applications.
+  - Content: `get_profile`, `update_profile`, `list_sections`, `save_section`, `delete_section`,
+    `save_entry`, `delete_entry` (one CRUD for every section: experience = roles, education,
+    projects, or any section the user adds), `list_experiences`, `save_experience` (linked to the
+    entry where it happened), `delete_experiences`, `set_experience_levels`.
+  - CVs: `cv_guidelines` (how to build CVs that pass ATS/AI screening and land), `build_cv` (a
+    selection; the server lays out the graph, generates the version and returns an outline and a
+    review: length, summary, results, wording, keywords backed by the bank), `update_cv`,
+    `build_cv_version`, `delete_cv`.
+  - Applications: `check_duplicates`, `create_application`, `move_application`, `add_note`,
+    `update_application`, `delete_application`, `delete_status`, `search_applications`,
+    `get_application`.
+  - Anything else: `describe_model`, `get_document`, `update_document` (JSON Patch, `[id=…]` paths).
+  - Prompts: `actualizar-mi-info`, `armar-cv`, `novedad`.
 - Everything is open: every entity keeps extra data under `extra`, status and event kinds are
   free, events dated in the future are "coming up".
 - Auth: Supabase Auth's OAuth 2.1 server with dynamic client registration. Clients are sent to

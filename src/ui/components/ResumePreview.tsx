@@ -268,11 +268,36 @@ function extraBlock(
     false,
     <section className="resume-section">
       <h2 className="section-label">{extra.name}</h2>
-      <ul className="resume-bullets">
-        {extra.entries.map((entry) => (
-          <li key={entry.id}>{entry.text}</li>
-        ))}
-      </ul>
+      {extra.entries.some((entry) => entry.title || entry.bullets) ? (
+        extra.entries.map((entry) => (
+          <div key={entry.id} className="resume-role">
+            <div className="role-head">
+              <div>
+                {entry.title ? <div className="role-title">{entry.title}</div> : null}
+                {entry.subtitle || entry.location ? (
+                  <div className="role-company">{[entry.subtitle, entry.location].filter(Boolean).join(' · ')}</div>
+                ) : null}
+                {!entry.title && !entry.subtitle ? <div className="role-title">{entry.text}</div> : null}
+              </div>
+              {entry.dates ? <div className="role-dates">{entry.dates}</div> : null}
+            </div>
+            {entry.description ? <p className="resume-entry-description">{entry.description}</p> : null}
+            {entry.bullets ? (
+              <ul className="resume-bullets">
+                {entry.bullets.map((bullet, index) => (
+                  <li key={index}>{bullet}</li>
+                ))}
+              </ul>
+            ) : null}
+          </div>
+        ))
+      ) : (
+        <ul className="resume-bullets">
+          {extra.entries.map((entry) => (
+            <li key={entry.id}>{entry.text}</li>
+          ))}
+        </ul>
+      )}
     </section>,
   )
 }

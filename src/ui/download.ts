@@ -77,7 +77,16 @@ function resumeDocHtml(title: string, snapshot: Snapshot, enabledSections: strin
   for (const block of snapshot.blocks ?? []) {
     if (snapshot.placeholder || !enabled.has(block.id) || block.entries.length === 0) continue
     parts.push(`<h2>${esc(block.name.trim() || label(block.id, 'Section'))}</h2>`)
-    parts.push(`<ul>${block.entries.filter((entry) => entry.text.trim()).map((entry) => `<li>${esc(entry.text.trim())}</li>`).join('')}</ul>`)
+    if (block.entries.some((entry) => entry.title || entry.bullets)) {
+      for (const entry of block.entries) {
+        const head = [entry.title, entry.subtitle, entry.location].filter(Boolean).map((part) => esc(part!)).join(' · ') || esc(entry.text)
+        parts.push(`<p><b>${head}</b>${entry.dates ? ` <i>${esc(entry.dates)}</i>` : ''}</p>`)
+        if (entry.description) parts.push(`<p>${esc(entry.description)}</p>`)
+        if (entry.bullets?.length) parts.push(`<ul>${entry.bullets.map((bullet) => `<li>${esc(bullet)}</li>`).join('')}</ul>`)
+      }
+    } else {
+      parts.push(`<ul>${block.entries.filter((entry) => entry.text.trim()).map((entry) => `<li>${esc(entry.text.trim())}</li>`).join('')}</ul>`)
+    }
   }
 
   if (parts.length === 0) parts.push(`<h1>${esc(fileBase(title))}</h1>`)

@@ -24,6 +24,7 @@ import {
   type ResumeNode,
   type RoleGraph,
   type RoleNode,
+  type SectionEntry,
   type SectionNode,
   type SkillGroup,
   type Snapshot,
@@ -374,7 +375,11 @@ function parseNode(value: unknown): ResumeNode | null {
       id: value.id,
       type: 'section',
       position,
-      data: { sectionId },
+      data: {
+        sectionId,
+        ...(Array.isArray(data.entryIds) ? { entryIds: readStringList(data.entryIds) } : {}),
+        ...(Array.isArray(data.experienceIds) ? { experienceIds: readStringList(data.experienceIds) } : {}),
+      },
     }
     return node
   }
@@ -500,18 +505,41 @@ export function readSections(value: unknown): CatalogSection[] {
 function parseSection(value: unknown): CatalogSection[] {
   if (!isRecord(value) || typeof value.id !== 'string') return []
   const builtin = defaultSections().find((section) => section.id === value.id)
+  const entries = Array.isArray(value.entries) ? value.entries.flatMap(parseSectionEntry) : []
   return [withExtra({
     id: value.id,
     name: readString(value.name).trim() || builtin?.name || 'Section',
     description: readString(value.description),
     active: value.active === true || value.active === false ? value.active : value.id !== 'projects',
     builtIn: Boolean(builtin),
-  }, readExtra(value, ['id', 'name', 'description', 'active', 'builtIn']))]
+    ...(entries.length > 0 ? { entries } : {}),
+  }, readExtra(value, ['id', 'name', 'description', 'active', 'builtIn', 'entries']))]
 }
 
 function parseTextEntry(value: unknown): TextEntry[] {
   if (!isRecord(value) || typeof value.id !== 'string') return []
-  return [{ id: value.id, text: readString(value.text) }]
+  const entry: TextEntry = { id: value.id, text: readString(value.text) }
+  for (const key of ['title', 'subtitle', 'location', 'dates', 'description'] as const) {
+    const text = readString(value[key])
+    if (text) entry[key] = text
+  }
+  const bullets = readStringList(value.bullets)
+  if (bullets.length > 0) entry.bullets = bullets
+  return [entry]
+}
+
+function parseSectionEntry(value: unknown): SectionEntry[] {
+  if (!isRecord(value) || typeof value.id !== 'string' || !value.id) return []
+  return [withExtra({
+    id: value.id,
+    title: readString(value.title),
+    subtitle: readString(value.subtitle),
+    location: readString(value.location),
+    start: readString(value.start),
+    end: readString(value.end),
+    description: readString(value.description),
+    url: readString(value.url),
+  }, readExtra(value, ['id', 'title', 'subtitle', 'location', 'start', 'end', 'description', 'url']))]
 }
 
 function readBlocks(value: unknown[]): SnapshotBlock[] {

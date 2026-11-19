@@ -36,8 +36,8 @@ export type Tables = Record<TableName, Row[]>
 /** Columns read back from each table (user_id is implied: RLS returns only the user's rows). */
 export const COLUMNS: Record<TableName, string> = {
   profiles: 'id,data',
-  experiences: 'id,category,text,skills,aliases,level,sort,extra',
-  sections: 'id,name,description,active,built_in,sort,extra',
+  experiences: 'id,category,text,skills,aliases,entry_id,level,sort,extra',
+  sections: 'id,name,description,active,built_in,entries,sort,extra',
   role_templates: 'id,graph,sort',
   cvs: 'id,title,target_role,target_company,posting,summary,style,enabled_sections,graph,sort,extra',
   cv_versions: 'id,cv_id,created_at,snapshot,sort',
@@ -75,6 +75,7 @@ export function toTables(document: ResumeDocument): Tables {
       text: item.text,
       skills: item.skills,
       aliases: item.aliases,
+      entry_id: item.entryId ?? null,
       level: levels.get(item.id) ?? null,
       sort,
       extra: item.extra ?? {},
@@ -85,6 +86,7 @@ export function toTables(document: ResumeDocument): Tables {
       description: section.description,
       active: section.active,
       built_in: section.builtIn,
+      entries: section.entries ?? [],
       sort,
       extra: section.extra ?? {},
     })),
@@ -192,7 +194,15 @@ export function fromTables(tables: Tables, previous?: ResumeDocument): ResumeDoc
 
   const bankRows = bySort(tables.experiences)
   const bank = readExperiences(
-    bankRows.map((row) => ({ id: row.id, category: row.category, text: row.text, skills: row.skills, aliases: row.aliases, extra: row.extra })),
+    bankRows.map((row) => ({
+      id: row.id,
+      category: row.category,
+      text: row.text,
+      skills: row.skills,
+      aliases: row.aliases,
+      entryId: row.entry_id,
+      extra: row.extra,
+    })),
   )
   const inBank = new Set(bank.map((item) => item.id))
   const knowledge: KnowledgeAnswer[] = bankRows.flatMap((row) => {
@@ -201,7 +211,14 @@ export function fromTables(tables: Tables, previous?: ResumeDocument): ResumeDoc
   })
 
   const sections = readSections(
-    bySort(tables.sections).map((row) => ({ id: row.id, name: row.name, description: row.description, active: row.active, extra: row.extra })),
+    bySort(tables.sections).map((row) => ({
+      id: row.id,
+      name: row.name,
+      description: row.description,
+      active: row.active,
+      entries: row.entries,
+      extra: row.extra,
+    })),
   )
   const roleGraphs = bySort(tables.role_templates).flatMap((row) => parseRoleGraph(row.id, row.graph) ?? [])
 

@@ -110,7 +110,7 @@ export function buildCvVersion(
   const version: CvVersion = {
     id: versionId,
     createdAt: (ids.now ?? new Date()).toISOString(),
-    snapshot: buildResume(cv.nodes, cv.edges, cv.summary),
+    snapshot: buildResume(cv.nodes, cv.edges, cv.summary, { sections: document.sections, bank: document.bank }),
   }
   return {
     document: { ...document, cvs: document.cvs.map((item) => (item.id === cvId ? { ...item, versions: [...item.versions, version] } : item)) },

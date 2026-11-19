@@ -14,6 +14,10 @@ type ExperienceMasterProps = {
   onAnswer: (id: string, level: ExperienceLevel | null) => void
   onApplyAnswers: (updates: { id: string; level: ExperienceLevel }[]) => void
   onBank: (bank: Experience[]) => void
+  /** Entries an experience can be linked to (roles, studies, projects…), labeled for a select. */
+  places?: { id: string; label: string }[]
+  onLink?: (experienceId: string, entryId: string) => void
+  onDelete?: (experienceIds: string[]) => void
 }
 
 type LevelFilter = 'in-master' | 'unanswered' | 'no-experience'
@@ -29,7 +33,9 @@ const statusOptions: { id: LevelFilter; label: string }[] = [
   { id: 'no-experience', label: 'Sin experiencia' },
 ]
 
-export function ExperienceMaster({ bank, answers, onAnswer, onApplyAnswers, onBank }: ExperienceMasterProps) {
+export function ExperienceMaster({ bank, answers, onAnswer, onApplyAnswers, onBank, places = [], onLink, onDelete }: ExperienceMasterProps) {
+  const [checked, setChecked] = useState<Set<string>>(() => new Set())
+  const [confirming, setConfirming] = useState<string | 'bulk' | null>(null)
   const [query, setQuery] = useState('')
   const [category, setCategory] = useState<string | null>(null)
   const [status, setStatus] = useState<LevelFilter | null>(null)
@@ -338,32 +344,111 @@ export function ExperienceMaster({ bank, answers, onAnswer, onApplyAnswers, onBa
         ) : null}
       </div>
 
+      {onDelete && checked.size > 0 ? (
+        <div className="master-bulk" role="toolbar" aria-label="Experiencias seleccionadas">
+          <span>{checked.size} seleccionada{checked.size === 1 ? '' : 's'}</span>
+          {confirming === 'bulk' ? (
+            <>
+              <span>¿Eliminarlas? No se puede deshacer.</span>
+              <button
+                type="button"
+                className="button danger"
+                onClick={() => {
+                  onDelete([...checked])
+                  setChecked(new Set())
+                  setConfirming(null)
+                }}
+              >
+                Eliminar
+              </button>
+              <button type="button" className="button" onClick={() => setConfirming(null)}>
+                No
+              </button>
+            </>
+          ) : (
+            <>
+              <button type="button" className="button" onClick={() => setConfirming('bulk')}>
+                Eliminar seleccionadas
+              </button>
+              <button type="button" className="link-button" onClick={() => setChecked(new Set())}>
+                Deseleccionar
+              </button>
+            </>
+          )}
+        </div>
+      ) : null}
+
       <div className="personal-sheet knowledge-sheet">
         <table className="source-table personal-table knowledge-table master-table">
           <thead>
             <tr>
-              <th className="col-index" />
+              <th className="col-index">
+                {onDelete && rows.length > 0 ? (
+                  <input
+                    type="checkbox"
+                    aria-label="Seleccionar todas"
+                    checked={rows.every((item) => checked.has(item.id))}
+                    onChange={(event) => setChecked(event.target.checked ? new Set(rows.map((item) => item.id)) : new Set())}
+                  />
+                ) : null}
+              </th>
               <th>Experiencia</th>
+              {onLink ? <th className="col-place">Dónde</th> : null}
               <th className="col-skills">Skills</th>
               <th className="col-mark">Nivel</th>
+              {onDelete ? <th className="col-actions" /> : null}
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 ? (
               <tr>
                 <td className="col-index" />
-                <td colSpan={3}>Sin resultados.</td>
+                <td colSpan={5}>Sin resultados.</td>
               </tr>
             ) : rows.map((item, index) => {
               const level = byId.get(item.id)
               const selected = level === undefined ? null : level
               return (
                 <tr key={item.id} className={selected !== null && selected > 0 ? 'is-known' : undefined}>
-                  <td className="col-index">{index + 1}</td>
+                  <td className="col-index">
+                    {onDelete ? (
+                      <input
+                        type="checkbox"
+                        aria-label={`Seleccionar: ${item.text}`}
+                        checked={checked.has(item.id)}
+                        onChange={(event) =>
+                          setChecked((current) => {
+                            const next = new Set(current)
+                            if (event.target.checked) next.add(item.id)
+                            else next.delete(item.id)
+                            return next
+                          })
+                        }
+                      />
+                    ) : (
+                      index + 1
+                    )}
+                  </td>
                   <td>
                     <div className="master-exp-text">{item.text}</div>
                     <div className="master-exp-meta">{item.category}</div>
                   </td>
+                  {onLink ? (
+                    <td className="col-place">
+                      <select
+                        aria-label={`Dónde: ${item.text}`}
+                        value={item.entryId && places.some((place) => place.id === item.entryId) ? item.entryId : ''}
+                        onChange={(event) => onLink(item.id, event.target.value)}
+                      >
+                        <option value="">Sin ubicar</option>
+                        {places.map((place) => (
+                          <option key={place.id} value={place.id}>
+                            {place.label}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                  ) : null}
                   <td className="col-skills">
                     {item.skills.length > 0 ? (
                       <div className="master-skill-list">
@@ -383,6 +468,24 @@ export function ExperienceMaster({ bank, answers, onAnswer, onApplyAnswers, onBa
                       onChange={(next) => onAnswer(item.id, next)}
                     />
                   </td>
+                  {onDelete ? (
+                    <td className="col-actions">
+                      {confirming === item.id ? (
+                        <span className="confirm-inline">
+                          <button type="button" className="button danger" onClick={() => onDelete([item.id])}>
+                            Eliminar
+                          </button>
+                          <button type="button" className="button" onClick={() => setConfirming(null)}>
+                            No
+                          </button>
+                        </span>
+                      ) : (
+                        <button type="button" className="icon-button" aria-label={`Eliminar: ${item.text}`} title="Eliminar" onClick={() => setConfirming(item.id)}>
+                          ×
+                        </button>
+                      )}
+                    </td>
+                  ) : null}
                 </tr>
               )
             })}

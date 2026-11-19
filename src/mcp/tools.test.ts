@@ -47,7 +47,9 @@ describe('MCP tools', () => {
   it('exposes the generic and the dedicated tools, and the everyday prompts', async () => {
     const { rpc } = await setup()
     const tools = (await rpc('tools/list', {})).result.tools.map((tool: { name: string }) => tool.name)
-    expect(tools).toEqual(expect.arrayContaining(['describe_model', 'get_document', 'update_document', 'create_cv', 'build_cv_version', 'move_application']))
+    expect(tools).toEqual(
+      expect.arrayContaining(['describe_model', 'cv_guidelines', 'get_document', 'update_document', 'list_sections', 'save_entry', 'save_experience', 'build_cv', 'move_application']),
+    )
     const prompts = (await rpc('prompts/list', {})).result.prompts.map((prompt: { name: string }) => prompt.name)
     expect(prompts).toEqual(['actualizar-mi-info', 'armar-cv', 'novedad'])
   })
@@ -158,27 +160,65 @@ describe('MCP tools', () => {
     expect(stored.events.at(-1)).toMatchObject({ kind: 'interview', extra: { place: 'Zoom' } })
   })
 
-  it('builds a CV for an application from bank items and pins the version sent', async () => {
+  it('fills sections, entries and experiences with one CRUD, then builds and reviews a CV', async () => {
     const { call, load, document } = await setup()
     const globex = document.applications.find((application) => application.company === 'Globex')!
-    const bankIds = document.bank.slice(0, 2).map((item) => item.id)
-    const created = await call('create_cv', {
-      title: 'Globex — Frontend',
-      position: 'Frontend Dev',
+
+    const role = await call('save_entry', { section: 'experiencia', title: 'Tech Lead', subtitle: 'S64 Capital', start: '2025', end: 'Actualidad' })
+    expect(role.section_id).toBe('experience')
+    const project = await call('save_entry', { section: 'Proyectos', title: 'Weball', subtitle: 'Founder', start: '2024', end: 'Actualidad' })
+    expect(project.section_id).toBe('projects')
+    const certification = await call('save_entry', { section: 'Certificaciones', title: 'AWS Solutions Architect', subtitle: 'Amazon', end: '2024' })
+
+    const latency = await call('save_experience', { text: 'Reduje un 40% la latencia de órdenes con Redis', entry_id: role.entry_id, skills: ['Redis', 'Node.js'], level: 'profesional' })
+    const team = await call('save_experience', { text: 'Responsable del equipo de backend', entry_id: role.entry_id, skills: ['Leadership'] })
+    const leagues = await call('save_experience', { text: 'Plataforma usada por 300 ligas', entry_id: project.entry_id, skills: ['React'] })
+    const loose = await call('save_experience', { text: 'Mentoría a juniors' })
+    expect(await call('save_experience', { text: 'X', entry_id: 'nope' })).toMatchObject({ error: expect.stringContaining('No existe la entrada') })
+
+    const sections = await call('list_sections')
+    expect(sections.find((section: { id: string }) => section.id === 'experience').entries.at(-1)).toMatchObject({ title: 'Tech Lead', subtitle: 'S64 Capital', experiences: 2 })
+    const experiences = await call('list_experiences', { query: 'latencia' })
+    expect(experiences[0]).toMatchObject({ where: 'Experiencia laboral: Tech Lead — S64 Capital', level: 'profesional' })
+
+    const built = await call('build_cv', {
+      title: 'Globex — Tech Lead',
+      position: 'Tech Lead',
       company: 'Globex',
-      summary: 'Frontend engineer.',
-      experience_ids: bankIds,
+      posting: 'Buscamos Tech Lead con Node.js, Redis, Kubernetes y React.',
+      summary: 'Tech Lead con 10 años en backend y producto.',
+      experience_ids: [latency.experience_id, team.experience_id, leagues.experience_id, loose.experience_id],
+      section_ids: ['Proyectos', 'Certificaciones'],
       application_id: globex.id,
     })
-    expect(created).toMatchObject({ created: true, experiences: 2 })
-    expect(await call('create_cv', { title: 'X', experience_ids: ['invented'] })).toMatchObject({ error: expect.stringContaining('invented') })
+    expect(built.outline.roles.find((item: { company: string }) => item.company === 'S64 Capital')).toMatchObject({ experiences: 2 })
+    expect(built.outline.sections).toEqual([
+      { name: 'Personal projects', entries: 1 },
+      { name: 'Certificaciones', entries: 1 },
+    ])
+    expect(built.outline.unplaced).toEqual([{ id: loose.experience_id, text: 'Mentoría a juniors' }])
+    // The review points at what to fix: weak wording and keywords the bank backs but the CV lacks.
+    const kinds = built.review.findings.map((finding: { kind: string }) => finding.kind)
+    expect(kinds).toEqual(expect.arrayContaining(['wording', 'results']))
+    expect(built.review.keywords.covered).toEqual(expect.arrayContaining(['Node.js', 'Redis', 'React']))
+    expect(built.review.keywords.notInExperience).toContain('Kubernetes')
 
-    const built = await call('build_cv_version', { cv_id: created.cv_id, pin_to_application_id: globex.id })
     const stored = await load()
-    const cv = stored.cvs.find((item) => item.id === created.cv_id)!
-    expect(cv).toMatchObject({ title: 'Globex — Frontend', summary: 'Frontend engineer.' })
-    expect(cv.versions.at(-1)?.id).toBe(built.version_id)
-    expect(stored.applications.find((item) => item.id === globex.id)?.attachment).toEqual({ kind: 'cv', cvId: cv.id, versionId: built.version_id })
+    expect(stored.applications.find((item) => item.id === globex.id)?.attachment).toEqual({ kind: 'cv', cvId: built.cv_id, versionId: built.version_id })
+    expect(stored.cvs.find((cv) => cv.id === built.cv_id)?.enabledSections).toEqual(
+      expect.arrayContaining(['experience', 'projects', stored.sections.find((section) => section.name === 'Certificaciones')!.id]),
+    )
+    expect(certification.entry_id).toBeTruthy()
+  })
+
+  it('deletes experiences and entries', async () => {
+    const { call, load, document } = await setup()
+    const [first, second] = document.bank
+    expect(await call('delete_experiences', { experience_ids: [first.id, second.id] })).toEqual({ deleted: 2 })
+    const stored = await load()
+    expect(stored.bank.some((item) => item.id === first.id)).toBe(false)
+    await call('delete_entry', { section: 'experience', entry_id: 'job-1-r1' })
+    expect((await load()).profile.jobs).toEqual([])
   })
 
   it('deletes statuses re-homing their applications, and deletes applications', async () => {

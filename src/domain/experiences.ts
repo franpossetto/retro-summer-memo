@@ -9,6 +9,8 @@ export type Experience = {
   text: string
   skills: string[]
   aliases: string[]
+  /** Where it happened: an entry of any section (a role, a project, a degree…). CVs place it under that entry. */
+  entryId?: string
   /** Anything else: dates, metrics, links… */
   extra?: Extra
 }
@@ -167,13 +169,15 @@ export function readExperiences(value: unknown): Experience[] {
     const text = readString(entry.text)
     if (!text) continue
     seen.add(entry.id)
+    const entryId = readString(entry.entryId).trim()
     items.push(withExtra({
       id: entry.id,
       category: readString(entry.category) || 'Custom',
       text,
       skills: readStrings(entry.skills),
       aliases: readStrings(entry.aliases),
-    }, readExtra(entry, ['id', 'category', 'text', 'skills', 'aliases'])))
+      ...(entryId ? { entryId } : {}),
+    }, readExtra(entry, ['id', 'category', 'text', 'skills', 'aliases', 'entryId'])))
   }
   return items
 }

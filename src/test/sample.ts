@@ -110,7 +110,7 @@ export function sampleDocument(): ResumeDocument {
     edges,
     cvs: [mainCv, { ...backendCv, extra: { language: 'en' } }],
     activeCvId: mainCv.id,
-    bank: seed.bank.map((item, index) => (index === 0 ? { ...item, extra: { metric: '-40% latency' } } : item)),
+    bank: seed.bank.map((item, index) => (index === 0 ? { ...item, entryId: 'job-1-r1', extra: { metric: '-40% latency' } } : item)),
     sections: seed.sections.map((section) => (section.id === 'experience' ? { ...section, name: 'Experiencia laboral', extra: { order: 1 } } : section)),
     knowledge: [
       { id: 'rest-api', level: 2 },

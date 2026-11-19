@@ -5768,3 +5768,105 @@ a.button {
   color: #0969da;
   font-weight: 550;
 }
+
+.resume-entry-description {
+  margin: 2px 0 0;
+}
+
+/* Experience bank: bulk actions, where each experience happened */
+
+.master-bulk {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  max-width: 960px;
+  margin-top: 12px;
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
+  background: #fff8e5;
+  padding: 8px 12px;
+  font-size: 13px;
+}
+
+.master-table .col-place {
+  width: 220px;
+}
+
+.master-table .col-place select {
+  width: 100%;
+  max-width: 220px;
+  height: 28px;
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
+  background: #fff;
+  font-size: 12px;
+}
+
+.master-table .col-actions {
+  width: 1%;
+  white-space: nowrap;
+}
+
+/* Section entries (Biblioteca → Secciones) */
+
+.col-entries {
+  width: 1%;
+  white-space: nowrap;
+}
+
+.section-entries-row td {
+  background: #f6f8fa;
+}
+
+.section-entries {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 0;
+}
+
+.section-entry {
+  display: grid;
+  grid-template-columns: 1.4fr 1.2fr 0.8fr 0.6fr 0.7fr 1fr auto;
+  grid-template-areas:
+    'title subtitle location start end url remove'
+    'description description description description description description .';
+  align-items: end;
+  gap: 4px 8px;
+  width: 100%;
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
+  background: #fff;
+  padding: 8px;
+}
+
+.section-entry-field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.section-entry-field span {
+  color: #59636e;
+  font-size: 11px;
+}
+
+.section-entry-field input {
+  min-width: 0;
+  height: 28px;
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
+  padding: 0 6px;
+}
+
+.section-entry-field.is-title { grid-area: title; }
+.section-entry-field.is-subtitle { grid-area: subtitle; }
+.section-entry-field.is-location { grid-area: location; }
+.section-entry-field.is-start { grid-area: start; }
+.section-entry-field.is-end { grid-area: end; }
+.section-entry-field.is-url { grid-area: url; }
+.section-entry-field.is-description { grid-area: description; }
+.section-entry > .icon-button { grid-area: remove; }
