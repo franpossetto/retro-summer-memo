@@ -121,13 +121,30 @@ jobs:
         run: |
           npm run mcp:build
           npx supabase functions deploy mcp --no-verify-jwt --remote="$SUPABASE_PROJECT_REF" --yes
+      # Built on Vercel, where the production variables (VITE_SUPABASE_URL…) are: the CLI does not
+      # hand their values to `vercel pull` (it writes "[SENSITIVE]"), so a build here would ship
+      # without them. The build gets the domain only after checking it has them.
       - name: Web app on Vercel
         run: |
-          npx --yes vercel@66.2.0 pull --yes --environment=production --token="$VERCEL_TOKEN"
-          npx --yes vercel@66.2.0 build --prod --token="$VERCEL_TOKEN"
-          npx --yes vercel@66.2.0 deploy --prebuilt --prod --token="$VERCEL_TOKEN"
+          vercel="npx --yes vercel@66.2.0"
+          url=$($vercel deploy --prod --skip-domain --yes --token="$VERCEL_TOKEN")
+          echo "Built $url"
+          page=$($vercel curl / --deployment "$url" --yes --token="$VERCEL_TOKEN")
+          bundle=$(echo "$page" | grep -o 'assets/index-[A-Za-z0-9_-]*\.js' | head -1)
+          [ -n "$bundle" ] || { echo "::error::No app bundle in $url: not published"; exit 1; }
+          $vercel curl "/$bundle" --deployment "$url" --yes --token="$VERCEL_TOKEN" | grep -q "$SUPABASE_PROJECT_REF.supabase.co" || {
+            echo "::error::$url was built without its Supabase settings: not published"
+            exit 1
+          }
+          $vercel promote "$url" --yes --token="$VERCEL_TOKEN"
       - name: Smoke test
         run: |
           curl -fsS -o /dev/null https://retro-summer-memo.com/
+          # The app must have been built with this project's Supabase settings.
+          bundle=$(curl -fsS https://retro-summer-memo.com/ | grep -o 'assets/index-[A-Za-z0-9_-]*\.js' | head -1)
+          curl -fsS "https://retro-summer-memo.com/$bundle" | grep -q "$SUPABASE_PROJECT_REF.supabase.co" || {
+            echo "::error::The app was built without its Supabase settings ($bundle)"
+            exit 1
+          }
           status=$(curl -s -o /dev/null -w '%{http_code}' -X POST https://retro-summer-memo.com/mcp -H 'content-type: application/json' -d '{}')
           [ "$status" = "401" ] || { echo "::error::The MCP should ask for sign-in (401), got $status"; exit 1; }
