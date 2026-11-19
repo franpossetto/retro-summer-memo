@@ -4,6 +4,7 @@ import {
   deleteExperiences,
   deleteSection,
   findSection,
+  importCareer,
   saveEntry,
   saveExperience,
   saveSection,
@@ -157,5 +158,67 @@ describe('buildCv', () => {
     expect(again.cvId).toBe(first.cvId)
     expect(again.outline.roles.map((role) => role.title)).toEqual(['Tech Lead', 'Technical Lead'])
     expect(again.document.cvs.find((cv) => cv.id === first.cvId)?.versions).toHaveLength(2)
+  })
+})
+
+describe('importCareer', () => {
+  const oldCv = {
+    profile: { name: 'Guido Faranna', fields: [{ label: 'Email', value: 'guido@example.com' }, { label: 'LinkedIn', value: 'https://linkedin.com/in/guido' }] },
+    entries: [
+      {
+        section: 'experience',
+        title: 'Tech Lead',
+        subtitle: 'Weball',
+        start: '2022',
+        end: 'Actualidad',
+        experiences: [{ text: 'Reduje un 40% la latencia de órdenes con Redis', skills: ['Redis'] }, { text: 'Lideré un equipo de 6' }],
+      },
+      { section: 'Estudios', title: 'Ingeniería en Sistemas', subtitle: 'UTN', experiences: [] },
+      { section: 'Certificaciones', title: 'AWS Solutions Architect', subtitle: 'Amazon' },
+    ],
+  }
+
+  it('loads a whole old CV in one go: profile, roles, studies, new sections and achievements linked to them', () => {
+    const { document, report } = importCareer(createEmptyDocument(), oldCv)
+    expect(report.profile).toBe(true)
+    expect(document.profile.name).toBe('Guido Faranna')
+    expect(report.entries.map((entry) => [entry.section, entry.title, entry.created])).toEqual([
+      ['experience', 'Tech Lead', true],
+      ['education', 'Ingeniería en Sistemas', true],
+      [expect.any(String), 'AWS Solutions Architect', true],
+    ])
+    const role = report.entries[0].entryId
+    expect(document.bank.filter((item) => item.entryId === role).map((item) => item.text)).toEqual(['Reduje un 40% la latencia de órdenes con Redis', 'Lideré un equipo de 6'])
+    expect(sectionsView(document).find((section) => section.name === 'Certificaciones')?.entries).toHaveLength(1)
+  })
+
+  it('merges a second CV instead of duplicating, and blank fields never erase data', () => {
+    const first = importCareer(createEmptyDocument(), oldCv).document
+    const { document, report } = importCareer(first, {
+      entries: [
+        {
+          section: 'Experiencia',
+          title: 'tech lead',
+          subtitle: 'WEBALL',
+          start: '',
+          location: 'Buenos Aires',
+          experiences: [{ text: 'Reduje un 40% la latencia de órdenes con Redis.' }, { text: 'Migré la app a React Native (iOS y Android)' }],
+        },
+      ],
+    })
+    expect(report.entries[0]).toMatchObject({ section: 'experience', created: false })
+    const roles = sectionsView(document).find((section) => section.id === 'experience')!.entries
+    expect(roles).toHaveLength(1)
+    expect(roles[0]).toMatchObject({ start: '2022', end: 'Actualidad', location: 'Buenos Aires' })
+    expect(report.skipped).toEqual(['Reduje un 40% la latencia de órdenes con Redis.'])
+    expect(report.experiences.map((item) => item.text)).toEqual(['Migré la app a React Native (iOS y Android)'])
+  })
+
+  it('adds achievements to entries that already exist, and refuses unknown ones', () => {
+    const { document, report } = importCareer(createEmptyDocument(), oldCv)
+    const role = report.entries[0].entryId
+    const more = importCareer(document, { experiences: [{ entryId: role, text: 'Armé el pipeline de CI/CD en GitHub Actions' }] })
+    expect(more.document.bank.at(-1)).toMatchObject({ entryId: role, text: 'Armé el pipeline de CI/CD en GitHub Actions' })
+    expect(() => importCareer(document, { experiences: [{ entryId: 'nope', text: 'x' }] })).toThrow(/nope/)
   })
 })

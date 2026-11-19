@@ -9,8 +9,8 @@ step (how each call or interview went: what they asked, what you said and did no
 liked) next to everything known about the company: logo, what it does, mission, vision, values,
 and dated notes on news, layoffs, hiring, other openings and how others' interviews went.
 
-It is driven by your assistant (ChatGPT, Claude, Gemini…) through an MCP server: "Actualizá mi info
-en Resume", "Armemos el CV para <link>", "Me confirmaron de Acme, paso al challenge el 20/3",
+It is driven by your assistant (ChatGPT, Claude, Gemini…) through an MCP server: "Preparemos mi
+Resume", a bare posting link, "Armemos el CV para <link>", "Mañana tengo call con RRHH de Acme",
 "Recién salí de la call con RRHH, te cuento…", "Investigá Acme". The app is the engine and the
 viewer, and shows the assistant's changes live.
 
@@ -117,15 +117,28 @@ MCP server at **`https://retro-summer-memo.com/mcp`**: `vercel.json` forwards it
   they change data exactly like the app (same domain code, same incremental saves). The model the
   assistant sees: profile → sections → entries → experiences → CVs → applications ↔ companies
   (matched by name).
+  - Starting point: `get_started`, which the assistant calls first whenever work comes up (even
+    without the user naming Resume). It returns today's date, how complete the account is (setup
+    gaps: contact details, roles without achievements, achievements without numbers…), the agenda
+    (what is coming up, steps that happened without a debrief, postings waiting for a decision,
+    quiet processes), the pipeline, and `start_with`: what to ask first. An empty account also gets
+    `onboarding_guide` (old CVs and LinkedIn first, then an interview role by role).
+  - Follow-ups: write tools answer with `follow_up`, what is missing or worth asking now (a role
+    with no achievements, an achievement with no number, who a call is with, how an interview
+    went), so every assistant keeps the same back-and-forth.
   - Content: `get_profile`, `update_profile`, `list_sections`, `save_section`, `delete_section`,
     `save_entry`, `delete_entry` (one CRUD for every section: experience = roles, education,
     projects, or any section the user adds), `list_experiences`, `save_experience` (linked to the
-    entry where it happened), `delete_experiences`, `set_experience_levels`.
+    entry where it happened), `delete_experiences`, `set_experience_levels`, `import_career`
+    (a whole old CV, LinkedIn export or long story in one call; merges instead of duplicating).
   - CVs: `cv_guidelines` (how to build CVs that pass ATS/AI screening and land), `build_cv` (a
     selection; the server lays out the graph, generates the version and returns an outline and a
     review: length, summary, results, wording, keywords backed by the bank), `update_cv`,
     `build_cv_version`, `delete_cv`.
-  - Applications: `check_duplicates`, `create_application`, `move_application`, `add_note`,
+  - Applications: `check_duplicates`, `create_application` (stage `considering`: a posting the user
+    is weighing, in "Analizando propuesta", with how it fits their experience; or `applied`),
+    `move_application` (leaving "Analizando propuesta" records the day they applied),
+    `schedule_step` (a call, interview or deadline coming up, optionally moving the step), `add_note`,
     `save_debrief` (how a step went: rating, people, asked, said, unsaid, liked, concerns),
     `delete_event`, `update_application`, `delete_application`, `delete_status`,
     `search_applications`, `get_application`.
@@ -134,8 +147,8 @@ MCP server at **`https://retro-summer-memo.com/mcp`**: `vercel.json` forwards it
     (news, hiring, layoff, role, interview, culture, salary, funding… with date and source),
     `delete_company_note`, `delete_company`.
   - Anything else: `describe_model`, `get_document`, `update_document` (JSON Patch, `[id=…]` paths).
-  - Prompts: `actualizar-mi-info`, `armar-cv`, `como-me-fue`, `investigar-empresa`,
-    `preparar-entrevista`, `novedad`.
+  - Prompts: `preparar-mi-resume`, `actualizar-mi-info`, `armar-cv`, `analizar-aviso`,
+    `como-me-fue`, `investigar-empresa`, `preparar-entrevista`, `novedad`.
 - Everything is open: every entity keeps extra data under `extra`, status, event and note kinds are
   free, events dated in the future are "coming up".
 - Logos: the image URL saved for the company, else its website's icon (Google's favicon service,

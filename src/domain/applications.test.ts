@@ -3,6 +3,7 @@ import {
   addApplicationNote,
   addStatus,
   companyKey,
+  consideringStatus,
   createApplication,
   defaultApplicationStatuses,
   emptyDebrief,
@@ -16,6 +17,7 @@ import {
   removeApplicationNote,
   removeStatus,
   saveDebrief,
+  scheduleEvent,
   stageVisits,
   stepsAhead,
   titleSimilarity,
@@ -151,7 +153,7 @@ describe('application lifecycle', () => {
 
   it('adds open steps after the last open one and closing steps at the end', () => {
     const open = addStatus(statuses, '  Call con el CTO ')
-    expect(open.statuses.map((status) => status.id).indexOf(open.status.id)).toBe(5)
+    expect(open.statuses.map((status) => status.id).indexOf(open.status.id)).toBe(6)
     expect(open.status).toMatchObject({ name: 'Call con el CTO', kind: 'active' })
     expect(statuses.some((status) => status.color === open.status.color)).toBe(false)
     const closing = addStatus(statuses, 'Ghosteado', 'withdrawn')
@@ -252,5 +254,57 @@ describe('debriefs and stages', () => {
     const visits = stageVisits(application, at('2026-03-10T00:00:00.000Z'))
     expect(visits.at(-1)).toMatchObject({ statusId: 'rejected', current: true, events: [] })
     expect(stepsAhead(application, statuses, visits)).toEqual([])
+  })
+})
+
+describe('postings the user is weighing ("Analizando propuesta")', () => {
+  const sent = { company: 'Acme', title: 'Dev' }
+
+  it('comes first in new pipelines, while applications the user sent still start in the first open step', () => {
+    expect(statuses[0]).toMatchObject({ id: 'considering', name: 'Analizando propuesta', kind: 'considering' })
+    expect(createApplication(sent, statuses).statusId).toBe('sent')
+    const weighing = createApplication({ ...sent, statusId: 'considering' }, statuses)
+    expect(weighing).toMatchObject({ statusId: 'considering', appliedOn: '' })
+  })
+
+  it('is added first to pipelines saved before it existed, once', () => {
+    const old = statuses.filter((status) => status.kind !== 'considering')
+    const added = consideringStatus(old)
+    expect(added).toMatchObject({ created: true, status: { id: 'considering', name: 'Analizando propuesta', kind: 'considering' } })
+    expect(added.statuses[0]).toBe(added.status)
+    expect(consideringStatus(added.statuses)).toMatchObject({ created: false, statuses: added.statuses })
+    const renamed = statuses.map((status) => (status.kind === 'considering' ? { ...status, name: 'Para mirar' } : status))
+    expect(consideringStatus(renamed).status.name).toBe('Para mirar')
+  })
+
+  it('records the day the user applied when the posting moves on, not when it is discarded', () => {
+    const weighing = createApplication({ ...sent, statusId: 'considering' }, statuses, at('2026-03-01T10:00:00.000Z'))
+    const now = at('2026-03-04T02:00:00.000Z')
+    expect(moveApplication(weighing, 'sent', '', now, { statuses, appliedOn: '2026-03-03' }).appliedOn).toBe('2026-03-03')
+    expect(moveApplication(weighing, 'sent', '', now, { statuses }).appliedOn).toBe('2026-03-04')
+    expect(moveApplication(weighing, 'withdrawn', 'No me cierra el sueldo', now, { statuses }).appliedOn).toBe('')
+    expect(moveApplication(weighing, 'sent', '', now).appliedOn).toBe('')
+    const known = { ...weighing, appliedOn: '2026-02-28' }
+    expect(moveApplication(known, 'sent', '', now, { statuses }).appliedOn).toBe('2026-02-28')
+  })
+
+  it('places new considering steps with the others and shows the open steps ahead', () => {
+    const added = addStatus(statuses, 'Para más adelante', 'considering')
+    expect(added.statuses.indexOf(added.status)).toBe(1)
+    const weighing = createApplication({ ...sent, statusId: 'considering' }, statuses)
+    expect(stepsAhead(weighing, statuses, stageVisits(weighing)).map((status) => status.id)).toEqual(['sent', 'accepted', 'hr-call', 'challenge', 'interview'])
+  })
+})
+
+describe('scheduleEvent', () => {
+  it('puts things on the calendar, moves them, and never touches the history of steps', () => {
+    const application = apply('Acme', 'Dev')
+    const first = scheduleEvent(application, { at: '2026-03-10T18:00:00.000Z', kind: 'call', text: ' Call con Laura (RRHH) ' }, at('2026-03-09T00:00:00.000Z'))
+    expect(first.application.events.at(-1)).toMatchObject({ id: first.eventId, kind: 'call', text: 'Call con Laura (RRHH)', statusId: 'sent' })
+    const moved = scheduleEvent(first.application, { id: first.eventId, at: '2026-03-11T18:00:00.000Z', kind: 'call', text: 'Call con Laura (RRHH)', statusId: 'hr-call' })
+    expect(moved.application.events.filter((event) => event.kind === 'call')).toEqual([expect.objectContaining({ at: '2026-03-11T18:00:00.000Z', statusId: 'hr-call' })])
+    const statusEvent = application.events[0]
+    expect(() => scheduleEvent(application, { id: statusEvent.id, at: '2026-03-10T00:00:00.000Z', kind: 'call', text: 'x' })).toThrow()
+    expect(() => scheduleEvent(application, { at: '2026-03-10T00:00:00.000Z', kind: 'debrief', text: 'x' })).toThrow()
   })
 })

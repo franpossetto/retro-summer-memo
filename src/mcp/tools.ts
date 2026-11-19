@@ -15,6 +15,7 @@ import {
 } from '../domain/applicationFilters'
 import {
   addApplicationNote,
+  consideringStatus,
   createApplication,
   debriefLists,
   findDuplicates,
@@ -23,6 +24,7 @@ import {
   removeApplicationNote,
   removeStatus,
   saveDebrief,
+  scheduleEvent,
   updateApplication,
   type Application,
   type ApplicationEvent,
@@ -45,6 +47,7 @@ import {
   deleteEntry,
   deleteExperiences,
   deleteSection,
+  importCareer,
   saveEntry,
   saveExperience,
   saveSection,
@@ -57,8 +60,10 @@ import { buildCvVersion, deleteCv } from '../domain/documentOps'
 import type { ResumeDocument } from '../domain/model'
 import type { DocumentStore } from '../ports/documentStore'
 import { documentView, patchDocument, type EditableDocument } from './document'
-import { APP_URL, CV_GUIDE, MODEL_GUIDE } from './guide'
-import { reviewCv } from '../domain/cvReview'
+import { APP_URL, CV_GUIDE, MODEL_GUIDE, ONBOARDING_GUIDE } from './guide'
+import { hasResult, postingFit, reviewCv } from '../domain/cvReview'
+import { agenda as buildAgenda, setupStatus, type AgendaItem } from '../domain/assistantBrief'
+import { afterCreate, afterDebrief, afterEntry, afterExperience, afterMove, afterSchedule, setupGaps, startingPoints } from './followUps'
 import { DEFAULT_ACCENT, accentColors, fontIds } from '../domain/fonts'
 import { templateIds } from '../domain/templates'
 import type { PatchOperation } from './jsonPatch'
@@ -88,6 +93,31 @@ function pastMoment(value: string, now: Date): string {
   if (day && time > now.getTime() && value === now.toISOString().slice(0, 10)) return now.toISOString()
   return new Date(time).toISOString()
 }
+
+/**
+ * When something scheduled happens: an ISO moment, or a day taken as its midday UTC (that day
+ * anywhere). A day that is today and whose midday already passed is taken as later today.
+ */
+function scheduledMoment(value: string, now: Date): string {
+  const day = /^\d{4}-\d{2}-\d{2}$/.test(value)
+  const time = Date.parse(day ? `${value}T12:00:00.000Z` : value)
+  if (Number.isNaN(time)) throw new Error(`Fecha inválida: ${value}`)
+  if (day && time <= now.getTime() && value === now.toISOString().slice(0, 10)) return `${value}T23:59:00.000Z`
+  return new Date(time).toISOString()
+}
+
+function agendaView(item: AgendaItem) {
+  return {
+    application_id: item.applicationId,
+    company: item.company,
+    title: item.title,
+    step: item.status,
+    ...(item.eventId ? { event_id: item.eventId, at: item.at, kind: item.kind, what: item.text || undefined } : {}),
+    ...(item.days !== undefined ? { days: item.days } : {}),
+  }
+}
+
+const contactKeys = new Set(['name', 'email', 'phone', 'location', 'linkedin'])
 
 /** The debrief without empty parts, for compact answers. */
 function debriefView(event: ApplicationEvent, statusById: Map<string, ApplicationStatus>) {
@@ -164,7 +194,8 @@ function summary(application: Application, statusById: Map<string, ApplicationSt
     company: application.company,
     title: application.title,
     status: statusById.get(application.statusId)?.name ?? application.statusId,
-    applied_on: application.appliedOn || application.createdAt.slice(0, 10),
+    // Postings still being weighed were not applied to: no date until they move on.
+    applied_on: application.appliedOn || (statusById.get(application.statusId)?.kind === 'considering' ? null : application.createdAt.slice(0, 10)),
     last_activity: activity,
     days_without_activity: daysSince(activity, now),
     location: application.location || undefined,
@@ -211,6 +242,59 @@ export function registerTools(server: McpServer, { store, now: clock = () => new
   // -------------------------------------------------------------------------
   // Reading
   // -------------------------------------------------------------------------
+
+  server.registerTool(
+    'get_started',
+    {
+      title: 'Empezar',
+      description:
+        "Call this FIRST whenever work comes up in a conversation (jobs, a CV, a posting link, an interview or a call, a company, a recruiter, their career), even if the user does not mention Resume. Returns today's date, how complete their account is and what is missing, what is coming up, steps that already happened without a debrief, postings waiting for a decision, quiet processes, their pipeline, and where to start (start_with). Read-only; call it again whenever you need the picture.",
+      inputSchema: z.object({}),
+      annotations: { readOnlyHint: true },
+    },
+    async () => {
+      const document = await open()
+      const now = clock()
+      const setup = setupStatus(document)
+      const agenda = buildAgenda(document, now)
+      const statusById = statusesOf(document)
+      return json({
+        today: now.toISOString(),
+        today_note: 'UTC. Resolve "mañana", "el jueves"… against the user’s local date; if a time matters and their time zone is unclear, ask.',
+        user: document.profile.name || null,
+        setup: {
+          mode: setup.mode,
+          missing: setup.checks.filter((check) => !check.done).map(({ key, detail, items }) => ({ key, detail, ...(items ? { items } : {}) })),
+          done: setup.checks.filter((check) => check.done).map((check) => check.key),
+        },
+        agenda: {
+          upcoming: agenda.upcoming.map(agendaView),
+          to_debrief: agenda.toDebrief.map(agendaView),
+          considering: agenda.considering.map(agendaView),
+          stale: agenda.stale.map(agendaView),
+        },
+        applications: {
+          total: document.applications.length,
+          open: document.applications.filter((application) => !['rejected', 'withdrawn'].includes(statusById.get(application.statusId)?.kind ?? '')).length,
+        },
+        pipeline: document.applicationStatuses.map((status) => ({ step: status.name, kind: status.kind })),
+        start_with: startingPoints(setup, agenda, now),
+        ...(setup.mode === 'empty' ? { onboarding_guide: ONBOARDING_GUIDE } : {}),
+      })
+    },
+  )
+
+  server.registerTool(
+    'onboarding_guide',
+    {
+      title: 'Cómo cargar todo',
+      description:
+        "How to get the user's career into Resume: old CVs and LinkedIn first (import_career), then an interview role by role for achievements with numbers, voice notes welcome, contact details and studies, what they are looking for. Read it when the account is empty or get_started lists gaps.",
+      inputSchema: z.object({}),
+      annotations: { readOnlyHint: true },
+    },
+    async () => ({ content: [{ type: 'text' as const, text: ONBOARDING_GUIDE }] }),
+  )
 
   server.registerTool(
     'describe_model',
@@ -435,7 +519,12 @@ export function registerTools(server: McpServer, { store, now: clock = () => new
       const document = await open()
       const next = updateProfileInfo(document, { name, fields, removeFields: remove_fields, extra })
       await store.save(next)
-      return json({ name: next.profile.name, fields: next.profile.fields.map(({ label, value }) => ({ label, value })) })
+      const missing = setupStatus(next).checks.filter((check) => !check.done && contactKeys.has(check.key)).map((check) => check.key)
+      return json({
+        name: next.profile.name,
+        fields: next.profile.fields.map(({ label, value }) => ({ label, value })),
+        follow_up: missing.length > 0 ? [`Still missing for CV headers: ${missing.join(', ')}. Ask for them when it fits.`] : [],
+      })
     },
   )
 
@@ -514,7 +603,12 @@ export function registerTools(server: McpServer, { store, now: clock = () => new
       const document = await open()
       const { document: next, sectionId, entryId } = saveEntry(document, section, { id: entry_id, ...fields })
       await store.save(next)
-      return json({ section_id: sectionId, entry_id: entryId })
+      const entry = sectionsView(next).find((item) => item.id === sectionId)?.entries.find((item) => item.id === entryId)
+      return json({
+        section_id: sectionId,
+        entry_id: entryId,
+        follow_up: afterEntry({ sectionId, entryId, achievements: next.bank.filter((item) => item.entryId === entryId).length, start: entry?.start ?? '' }),
+      })
     },
   )
 
@@ -559,7 +653,76 @@ export function registerTools(server: McpServer, { store, now: clock = () => new
         ...fields,
       })
       await store.save(next)
-      return json({ experience_id: experienceId })
+      const saved = next.bank.find((item) => item.id === experienceId)!
+      return json({
+        experience_id: experienceId,
+        follow_up: afterExperience({ placed: !!saved.entryId, hasResult: hasResult(saved.text), hasSkills: saved.skills.length > 0 }),
+      })
+    },
+  )
+
+  const importedExperience = z.object({
+    text: z.string().min(1).describe('One achievement, written as the CV bullet'),
+    skills: z.array(z.string()).optional(),
+    category: z.string().optional(),
+    level: z.enum(['profesional', 'personal', 'sin experiencia']).nullable().optional(),
+    extra: z.record(z.string(), z.unknown()).optional(),
+  })
+  const toExperience = ({ level, ...item }: z.infer<typeof importedExperience>) => ({
+    ...item,
+    level: level === undefined ? undefined : level === null ? null : levelValue[level],
+  })
+
+  server.registerTool(
+    'import_career',
+    {
+      title: 'Cargar todo junto',
+      description:
+        'Saves a whole career in one call: profile fields, roles (section "experience": title = role, subtitle = company), studies ("education": title = degree, subtitle = school), projects or any other section, each with the achievements that happened there (experiences). Use it for old CVs, a LinkedIn export, or a long story or voice note the user told. Safe to repeat: an entry with the same title and subtitle (and start) updates the existing one, blank fields never erase data, and achievements already in the bank are skipped. Top-level experiences add achievements to entries that already exist (entry_id from list_sections). The answer lists what is still missing (follow_up).',
+      inputSchema: z.object({
+        profile: z
+          .object({
+            name: z.string().optional(),
+            fields: z.array(z.object({ label: z.string().min(1), value: z.string(), kind: z.enum(['email', 'phone', 'text', 'link']).optional() })).optional(),
+            extra: z.record(z.string(), z.unknown()).optional(),
+          })
+          .optional(),
+        entries: z
+          .array(
+            z.object({
+              section: z.string().describe('"experience", "education", "projects", or any section name ("Certificaciones"…)'),
+              entry_id: z.string().optional().describe('To update a known entry'),
+              title: z.string().optional(),
+              subtitle: z.string().optional(),
+              location: z.string().optional(),
+              start: z.string().optional().describe('As printed: "2021", "Mar 2021"'),
+              end: z.string().optional().describe('As printed: "2024", "Actualidad"'),
+              description: z.string().optional(),
+              url: z.string().optional(),
+              extra: z.record(z.string(), z.unknown()).optional(),
+              experiences: z.array(importedExperience).optional(),
+            }),
+          )
+          .optional(),
+        experiences: z.array(importedExperience.extend({ entry_id: z.string() })).optional(),
+      }),
+      annotations: { idempotentHint: true },
+    },
+    async ({ profile, entries, experiences }) => {
+      const document = await open()
+      const { document: next, report } = importCareer(document, {
+        profile,
+        entries: entries?.map(({ entry_id, experiences: items, ...fields }) => ({ ...fields, id: entry_id, experiences: items?.map(toExperience) })),
+        experiences: experiences?.map(({ entry_id, ...item }) => ({ ...toExperience(item), entryId: entry_id })),
+      })
+      await store.save(next)
+      return json({
+        profile_updated: report.profile,
+        entries: report.entries.map(({ section, entryId, title, subtitle, created }) => ({ section, entry_id: entryId, title, subtitle, created })),
+        experiences_added: report.experiences.map(({ experienceId, entryId, text }) => ({ experience_id: experienceId, entry_id: entryId, text })),
+        skipped_duplicates: report.skipped,
+        follow_up: setupGaps(setupStatus(next)),
+      })
     },
   )
 
@@ -605,14 +768,15 @@ export function registerTools(server: McpServer, { store, now: clock = () => new
     {
       title: 'Nueva postulación',
       description:
-        "Records that the user applied (or is applying) to a job. Starts in the first open step of their pipeline. If it looks like a posting or role they already applied to, nothing is created and the matches come back: ask the user, then call again with confirm_duplicate=true if they want to go ahead.",
+        'Saves a job posting or an application. stage "considering": the user shared a posting and has not applied (a bare link, "mirá esto"): it goes to "Analizando propuesta" (created if their pipeline lacks it), with no applied date. stage "applied": they already sent it: it starts in the first open step. Send the full posting text: the answer says how it fits their experience (fit) and what to ask next (follow_up). If it looks like a posting or role they already have, nothing is created and the matches come back: ask the user, then call again with confirm_duplicate=true if they want to go ahead.',
       inputSchema: z.object({
+        stage: z.enum(['considering', 'applied']).describe('"considering": weighing a posting, not applied yet · "applied": already sent'),
         company: z.string().min(1),
         title: z.string().min(1),
         url: z.string().optional(),
         location: z.string().optional(),
         posting: z.string().optional().describe('Full posting text, if available'),
-        applied_on: isoDate.optional().describe("The user's local date (YYYY-MM-DD); omitted = the moment it was recorded"),
+        applied_on: isoDate.optional().describe("stage applied: the user's local date (YYYY-MM-DD); omitted = unknown"),
         note: z.string().optional().describe('First note: referral, salary asked, contact…'),
         confirm_duplicate: z.boolean().default(false),
       }),
@@ -620,7 +784,9 @@ export function registerTools(server: McpServer, { store, now: clock = () => new
     async (input) => {
       const document = await open()
       const now = clock()
-      const statusById = statusesOf(document)
+      const considering = input.stage === 'considering'
+      const pipeline = considering ? consideringStatus(document.applicationStatuses) : { statuses: document.applicationStatuses, status: undefined, created: false }
+      const statusById = new Map(pipeline.statuses.map((status) => [status.id, status]))
       const matches = findDuplicates(document.applications, input)
       if (!input.confirm_duplicate && matches.some((match) => match.reason !== 'same-company')) {
         return json({
@@ -636,18 +802,33 @@ export function registerTools(server: McpServer, { store, now: clock = () => new
           url: input.url,
           location: input.location,
           posting: input.posting,
-          appliedOn: input.applied_on,
+          appliedOn: considering ? undefined : input.applied_on,
           note: input.note,
+          statusId: pipeline.status?.id,
         },
-        document.applicationStatuses,
+        pipeline.statuses,
         now,
       )
-      await store.save({ ...document, applications: [...document.applications, application] })
+      await store.save({ ...document, applicationStatuses: pipeline.statuses, applications: [...document.applications, application] })
+      const fit = postingFit(document.bank, application.posting)
+      const company = companyBrief(document, application)
       return json({
         created: true,
         application: summary(application, statusById, now),
-        company: companyBrief(document, application),
+        ...(pipeline.created ? { created_status: pipeline.status!.name } : {}),
+        ...(fit
+          ? {
+              fit: {
+                asks_for: fit.asked,
+                backed_by_experience: fit.backed,
+                not_in_experience: fit.missing,
+                closest_experiences: fit.closest.map((item) => ({ id: item.id, text: item.text })),
+              },
+            }
+          : {}),
+        company,
         other_applications_at_company: duplicateReport(matches, statusById, now),
+        follow_up: afterCreate({ considering, fit, hasPosting: !!application.posting.trim(), companySaved: company.saved }),
       })
     },
   )
@@ -657,19 +838,73 @@ export function registerTools(server: McpServer, { store, now: clock = () => new
     {
       title: 'Mover de estado',
       description:
-        'Moves an application to another step (status name or id), optionally with a note for that step. Keeps the history. A status that does not exist yet is created (e.g. "Call con el CEO").',
-      inputSchema: z.object({ id: z.string(), status: z.string(), note: z.string().optional() }),
+        'Moves an application to another step (status name or id), optionally with a note for that step. Keeps the history. A status that does not exist yet is created (e.g. "Call con el CEO"); get_started lists the pipeline. Leaving "Analizando propuesta" for an open step means the user applied: that day is recorded (applied_on). For something coming up in the new step, also schedule_step.',
+      inputSchema: z.object({
+        id: z.string(),
+        status: z.string(),
+        note: z.string().optional(),
+        applied_on: isoDate.optional().describe("When this move means they applied: the user's local date (YYYY-MM-DD); default today (UTC)"),
+      }),
       annotations: { idempotentHint: true },
     },
-    async ({ id, status, note }) => {
+    async ({ id, status, note, applied_on }) => {
       const document = await open()
       const now = clock()
       const application = findApplication(document, id)
       const target = findOrCreateStatus(document.applicationStatuses, status)
-      const next = moveApplication(application, target.status.id, note ?? '', now)
+      const next = moveApplication(application, target.status.id, note ?? '', now, { statuses: target.statuses, appliedOn: applied_on })
       const updated = { ...document, applicationStatuses: target.statuses, applications: document.applications.map((item) => (item.id === id ? next : item)) }
       if (next !== application || target.created) await store.save(updated)
-      return json({ ...summary(next, statusesOf(updated), now), ...(target.created ? { created_status: target.status.name } : {}) })
+      const applied = !application.appliedOn && !!next.appliedOn
+      const pendingDebriefs = buildAgenda(updated, now).toDebrief.filter((item) => item.applicationId === id)
+      return json({
+        ...summary(next, statusesOf(updated), now),
+        ...(target.created ? { created_status: target.status.name } : {}),
+        ...(applied ? { applied_on_recorded: next.appliedOn } : {}),
+        follow_up: afterMove({ to: target.status, applied, pendingDebriefs }),
+      })
+    },
+  )
+
+  server.registerTool(
+    'schedule_step',
+    {
+      title: 'Agendar',
+      description:
+        "Puts something coming up on an application's calendar: a call, an interview, a challenge deadline (\"mañana tengo call con RRHH de X\"). move_to also moves the application to that step (status name or id, created if missing), as move_application would. Pass event_id to reschedule or fix one (from get_application or get_started). Resolve relative dates with today's date from get_started; send the time with the user's UTC offset when known (2026-11-20T15:00:00-03:00), or just the day.",
+      inputSchema: z.object({
+        application_id: z.string(),
+        what: z.string().min(1).describe('What it is, with whom when known: "Call con Laura (RRHH)", "Entrega del challenge"'),
+        at: momentInput.describe('YYYY-MM-DD, or ISO with the user’s offset'),
+        kind: z.string().default('interview').describe('call, interview, challenge, meeting, task… (any word)'),
+        move_to: z.string().optional().describe('Step the application moves to now, e.g. "Call con RRHH"'),
+        event_id: z.string().optional().describe('To reschedule or fix an event already on the calendar'),
+      }),
+      annotations: { idempotentHint: true },
+    },
+    async ({ application_id, what, at, kind, move_to, event_id }) => {
+      const document = await open()
+      const now = clock()
+      const application = findApplication(document, application_id)
+      const target = move_to ? findOrCreateStatus(document.applicationStatuses, move_to) : undefined
+      const statuses = target?.statuses ?? document.applicationStatuses
+      const moved = target ? moveApplication(application, target.status.id, '', now, { statuses }) : application
+      const when = scheduledMoment(at, now)
+      const { application: next, eventId } = scheduleEvent(moved, { id: event_id, at: when, kind, text: what, statusId: target?.status.id }, now)
+      const updated = { ...document, applicationStatuses: statuses, applications: document.applications.map((item) => (item.id === application_id ? next : item)) }
+      await store.save(updated)
+      const statusById = statusesOf(updated)
+      const event = next.events.find((item) => item.id === eventId)!
+      return json({
+        event_id: eventId,
+        at: event.at,
+        kind: event.kind,
+        what: event.text,
+        step: statusById.get(event.statusId)?.name ?? event.statusId,
+        application: summary(next, statusById, now),
+        ...(target?.created ? { created_status: target.status.name } : {}),
+        follow_up: afterSchedule({ past: event.at <= now.toISOString() }),
+      })
     },
   )
 
@@ -785,7 +1020,8 @@ export function registerTools(server: McpServer, { store, now: clock = () => new
         now,
       )
       await store.save({ ...document, applications: document.applications.map((item) => (item.id === application_id ? next : item)) })
-      return json(debriefView(next.events.find((event) => event.id === eventId)!, statusesOf(document)))
+      const event = next.events.find((item) => item.id === eventId)!
+      return json({ ...debriefView(event, statusesOf(document)), follow_up: afterDebrief(event.debrief, event.text) })
     },
   )
 
@@ -1101,6 +1337,18 @@ export function registerTools(server: McpServer, { store, now: clock = () => new
   const prompt = (text: string) => ({ messages: [{ role: 'user' as const, content: { type: 'text' as const, text } }] })
 
   server.registerPrompt(
+    'preparar-mi-resume',
+    {
+      title: 'Preparemos mi Resume',
+      description: 'Revisa qué tenés y qué falta, y te va preguntando: CVs viejos, LinkedIn, logros con números, datos de contacto.',
+    },
+    () =>
+      prompt(
+        'Preparemos mi Resume: fijate qué tengo y qué me falta, y andá preguntándome de a poco. Si te sirven CVs viejos o mi LinkedIn, pedímelos; también te puedo contar cosas que hice o mandarte audios.',
+      ),
+  )
+
+  server.registerPrompt(
     'actualizar-mi-info',
     { title: 'Actualizá mi info', description: 'Carga tu perfil, trabajos, estudios y experiencias con lo que el asistente sabe de vos.' },
     () => prompt('Actualizá mi info en Resume con todo lo que sabés de mí. Antes de guardar, mostrame un resumen y preguntame lo que falte (fechas, cifras). No inventes nada.'),
@@ -1114,6 +1362,16 @@ export function registerTools(server: McpServer, { store, now: clock = () => new
       argsSchema: z.object({ aviso: z.string().describe('Link del aviso o el texto pegado') }),
     },
     ({ aviso }) => prompt(`Armemos el CV para ${aviso}. Investigá la empresa, seguí cv_guidelines y revisá el review de build_cv antes de mostrármelo.`),
+  )
+
+  server.registerPrompt(
+    'analizar-aviso',
+    {
+      title: 'Analizar un aviso',
+      description: 'Guarda el aviso en "Analizando propuesta" y te dice cómo encaja con tu experiencia, antes de decidir si te postulás.',
+      argsSchema: z.object({ aviso: z.string().describe('Link del aviso o el texto pegado') }),
+    },
+    ({ aviso }) => prompt(`Mirá este aviso: ${aviso}\n\nGuardalo en Resume como "Analizando propuesta", investigá la empresa y decime cómo encaja con mi experiencia.`),
   )
 
   server.registerPrompt(

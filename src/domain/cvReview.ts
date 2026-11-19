@@ -5,7 +5,7 @@
  * assistant), not rules: it decides, and never invents to satisfy them.
  */
 import { experienceCatalog } from './catalog'
-import { normalizePhrase, seedExperiences, type Experience } from './experiences'
+import { matchExperiencesToPosting, normalizePhrase, seedExperiences, type Experience } from './experiences'
 import type { Cv, Snapshot } from './model'
 import { isSingleColumn } from './templates'
 
@@ -99,6 +99,34 @@ export function keywordMatch(snapshot: Snapshot, bank: Experience[], posting: st
     covered: asked.filter((term) => mentions(cvText, term)),
     backedButMissing: asked.filter((term) => !mentions(cvText, term) && mentions(bankText, term)),
     notInExperience: asked.filter((term) => !mentions(cvText, term) && !mentions(bankText, term)),
+  }
+}
+
+export type PostingFit = {
+  /** Known terms the posting mentions. */
+  asked: string[]
+  /** Of those, the ones the user's experiences back. */
+  backed: string[]
+  /** Asked but nowhere in the user's experience: gaps to talk about, never to invent. */
+  missing: string[]
+  /** The user's achievements closest to the posting (placed ones only: they can go on a CV). */
+  closest: Experience[]
+}
+
+/** How a posting matches what the user has done, before any CV exists. */
+export function postingFit(bank: Experience[], posting: string, closest = 6): PostingFit | undefined {
+  const postingText = normalizePhrase(posting ?? '')
+  if (!postingText) return undefined
+  const bankText = normalizePhrase(bank.flatMap((item) => [item.text, ...item.skills]).join(' \n '))
+  const asked = vocabulary(bank).filter((term) => mentions(postingText, term))
+  return {
+    asked,
+    backed: asked.filter((term) => mentions(bankText, term)),
+    missing: asked.filter((term) => !mentions(bankText, term)),
+    closest: matchExperiencesToPosting(posting, bank.filter((item) => item.entryId))
+      .filter((match) => match.score > 0)
+      .slice(0, closest)
+      .map((match) => match.item),
   }
 }
 

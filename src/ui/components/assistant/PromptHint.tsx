@@ -5,9 +5,12 @@ export function PromptHint({
   prompt,
   label = 'Pedíselo a tu asistente',
   onConnect,
+  block = false,
 }: {
   prompt: string
   label?: string
+  /** Long text (instructions to paste): shown whole, wrapped, instead of cut on one line. */
+  block?: boolean
   /** Shown when no assistant is connected yet. */
   onConnect?: () => void
 }) {
@@ -26,7 +29,7 @@ export function PromptHint({
   return (
     <div className="prompt-hint">
       {label ? <span className="prompt-hint-label">{label}</span> : null}
-      <button type="button" className="prompt-chip" title="Copiar" onClick={() => void copy()}>
+      <button type="button" className={block ? 'prompt-chip is-block' : 'prompt-chip'} title="Copiar" onClick={() => void copy()}>
         <span className="prompt-text">“{prompt}”</span>
         <span className="prompt-copy">{copied ? 'Copiado' : 'Copiar'}</span>
       </button>

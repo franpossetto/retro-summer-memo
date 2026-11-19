@@ -46,7 +46,7 @@ export function StageTimeline({ application, statuses, now, onChange, assistant 
 
   function move(statusId: string) {
     if (!statusId || statusId === application.statusId) return
-    onChange(moveApplication(application, statusId))
+    onChange(moveApplication(application, statusId, '', new Date(), { statuses, appliedOn: todayYmd() }))
     setMoveTo('')
   }
 
@@ -199,7 +199,13 @@ export function StageTimeline({ application, statuses, now, onChange, assistant 
 
               {visit.current && assistant ? (
                 <PromptHint
-                  prompt={highlight && current?.kind === 'active' ? prompts.debrief(application.company, name) : prompts.news(application.company, next?.name)}
+                  prompt={
+                    current?.kind === 'considering'
+                      ? prompts.apply(application.company)
+                      : highlight && current?.kind === 'active'
+                        ? prompts.debrief(application.company, name)
+                        : prompts.news(application.company, next?.name)
+                  }
                   onConnect={assistant.connected ? undefined : assistant.onConnect}
                 />
               ) : null}
