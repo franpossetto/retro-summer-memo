@@ -1,13 +1,84 @@
 <!doctype html>
-<html lang="en">
+<html lang="es">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>RESUME</title>
+    <title>ReSuMe · Retro Summer Memo | Tu CV y tus postulaciones con IA</title>
+    <meta
+      name="description"
+      content="Armá tu CV a medida y seguí tus postulaciones hablándole a ChatGPT, Claude o Gemini. Retro Summer Memo: Re·Su·Me, tu CV en lenguaje natural."
+    />
+    <link rel="canonical" href="https://retro-summer-memo.com/" />
+    <meta name="theme-color" content="#ffffff" />
+    <meta name="color-scheme" content="light" />
+
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/png" sizes="48x48" href="/favicon-48.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/site.webmanifest" />
+
+    <!-- Sharing: WhatsApp, LinkedIn, Slack, X… read these from the HTML, without running the app. -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="ReSuMe · Retro Summer Memo" />
+    <meta property="og:locale" content="es_AR" />
+    <meta property="og:url" content="https://retro-summer-memo.com/" />
+    <meta property="og:title" content="ReSuMe · Organizá tu CV y tus postulaciones con tu asistente" />
+    <meta
+      property="og:description"
+      content="Pedíselo a ChatGPT, Claude o Gemini como a una persona: «Estoy por aplicar a esto, armame el CV perfecto». Resume arma tu CV y lleva cada postulación."
+    />
+    <meta property="og:image" content="https://retro-summer-memo.com/og.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta
+      property="og:image:alt"
+      content="ReSuMe: un chat con tu asistente que arma tu CV y mueve tus postulaciones en un tablero"
+    />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="ReSuMe · Organizá tu CV y tus postulaciones con tu asistente" />
+    <meta
+      name="twitter:description"
+      content="Pedíselo a ChatGPT, Claude o Gemini como a una persona. Resume arma tu CV a medida y lleva cada postulación."
+    />
+    <meta name="twitter:image" content="https://retro-summer-memo.com/og.png" />
+
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "WebSite",
+            "@id": "https://retro-summer-memo.com/#website",
+            "name": "ReSuMe",
+            "alternateName": ["Retro Summer Memo", "Resume"],
+            "url": "https://retro-summer-memo.com/",
+            "inLanguage": "es"
+          },
+          {
+            "@type": "WebApplication",
+            "name": "ReSuMe · Retro Summer Memo",
+            "url": "https://retro-summer-memo.com/",
+            "applicationCategory": "BusinessApplication",
+            "operatingSystem": "Web",
+            "inLanguage": "es",
+            "image": "https://retro-summer-memo.com/og.png",
+            "description": "Armá CVs a medida que pasan filtros ATS y seguí tus postulaciones hablándole a ChatGPT, Claude o Gemini a través de un servidor MCP.",
+            "isPartOf": { "@id": "https://retro-summer-memo.com/#website" }
+          }
+        ]
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>
+    <noscript>
+      <h1>ReSuMe · Retro Summer Memo</h1>
+      <p>
+        Organizá tu CV y trackeá tus postulaciones con ChatGPT, Claude o Gemini. Pedíselo en lenguaje natural: «De toda la
+        info que tenés de mí, actualizá mi CV», «Estoy por aplicar a esto, armame el CV perfecto», «Me confirmaron de Globex,
+        paso al challenge el 20/3». Necesitás JavaScript para usar la app.
+      </p>
+    </noscript>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

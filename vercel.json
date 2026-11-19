@@ -1,0 +1,30 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "redirects": [
+    {
+      "source": "/",
+      "has": [{ "type": "host", "value": "www.retro-summer-memo.com" }],
+      "destination": "https://retro-summer-memo.com/",
+      "permanent": true
+    },
+    {
+      "source": "/:path*",
+      "has": [{ "type": "host", "value": "www.retro-summer-memo.com" }],
+      "destination": "https://retro-summer-memo.com/:path*",
+      "permanent": true
+    }
+  ],
+  "rewrites": [
+    { "source": "/oauth/consent", "destination": "/index.html" },
+    { "source": "/mcp", "destination": "https://attrxmtjyjzfgopfrgnk.supabase.co/functions/v1/mcp/_site" },
+    { "source": "/mcp/:path*", "destination": "https://attrxmtjyjzfgopfrgnk.supabase.co/functions/v1/mcp/_site/:path*" },
+    {
+      "source": "/.well-known/oauth-protected-resource/mcp",
+      "destination": "https://attrxmtjyjzfgopfrgnk.supabase.co/functions/v1/mcp/_site/oauth-protected-resource"
+    },
+    {
+      "source": "/.well-known/oauth-protected-resource",
+      "destination": "https://attrxmtjyjzfgopfrgnk.supabase.co/functions/v1/mcp/_site/oauth-protected-resource"
+    }
+  ]
+}

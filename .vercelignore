@@ -1,0 +1,7 @@
+# Env files stay local: Vercel gets VITE_SUPABASE_* from its own project settings.
+.env*.local
+.env.local
+node_modules
+dist
+supabase/.temp
+supabase/.branches
