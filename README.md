@@ -89,7 +89,9 @@ Vercel; https://retro-summer-memo.vercel.app keeps working). `VITE_SUPABASE_URL`
 and starts a real Supabase in the runner to apply every migration and run the integration and
 MCP end-to-end tests. A merge to `main` then deploys, one deploy at a time and in this order:
 database migrations (`supabase db push`), the `mcp` function, the app on Vercel; and checks that
-the site answers and the MCP asks for sign-in. It needs, in Settings → Secrets and variables →
+the site answers and the MCP asks for sign-in. The app is built on Vercel (where its production
+variables are; `vercel pull` does not hand their values out) without the domain, checked to carry
+its Supabase settings, and only then promoted, so a broken build never goes live. It needs, in Settings → Secrets and variables →
 Actions: the secrets `SUPABASE_ACCESS_TOKEN` and `VERCEL_TOKEN`, and the variables
 `SUPABASE_PROJECT_REF`, `VERCEL_ORG_ID` and `VERCEL_PROJECT_ID` (from `.vercel/project.json`).
 Migrations must be additive: the database is updated before the code that uses it.
