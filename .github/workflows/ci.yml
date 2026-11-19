@@ -138,7 +138,22 @@ jobs:
             echo "::error::$url was built without its Supabase settings: not published"
             exit 1
           }
-          $vercel promote "$url" --yes --token="$VERCEL_TOKEN"
+          # Promoted through the REST API: `vercel promote` looks the user up and a team-scoped
+          # token gets "User not found".
+          api="https://api.vercel.com"
+          auth="Authorization: Bearer $VERCEL_TOKEN"
+          id=$(curl -fsS -H "$auth" "$api/v13/deployments/${url#https://}?teamId=$VERCEL_ORG_ID" | jq -r .id)
+          [ -n "$id" ] && [ "$id" != "null" ] || { echo "::error::Could not find the deployment $url"; exit 1; }
+          curl -fsS -X POST -H "$auth" "$api/v10/projects/$VERCEL_PROJECT_ID/promote/$id?teamId=$VERCEL_ORG_ID" -o /dev/null
+          echo "Promoting $id"
+          # Promotion is asynchronous: wait until the domain serves this build.
+          for attempt in $(seq 1 40); do
+            live=$(curl -fsS https://retro-summer-memo.com/ | grep -o 'assets/index-[A-Za-z0-9_-]*\.js' | head -1)
+            [ "$live" = "$bundle" ] && { echo "Live: $bundle"; exit 0; }
+            sleep 3
+          done
+          echo "::error::retro-summer-memo.com still serves $live, not $bundle"
+          exit 1
       - name: Smoke test
         run: |
           curl -fsS -o /dev/null https://retro-summer-memo.com/
