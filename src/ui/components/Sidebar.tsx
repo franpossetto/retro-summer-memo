@@ -19,9 +19,9 @@ type SidebarProps = {
 
 const collapsedKey = 'resume.navCollapsed.v1'
 
-const items: { id: Section; label: string; hint: string; icon: ReactNode }[] = [
-  { id: 'applications', label: 'Postulaciones', hint: 'Los puestos a los que te postulaste y cómo viene cada proceso', icon: <ApplicationsIcon /> },
-  { id: 'cvs', label: 'Mis CVs', hint: 'Tus CVs por rol y los de cada postulación', icon: <CvsIcon /> },
+const items: { id: Section; label: string; hint: string; counted?: string; icon: ReactNode }[] = [
+  { id: 'applications', label: 'Postulaciones', hint: 'Los puestos a los que te postulaste y cómo viene cada proceso', counted: 'en curso', icon: <ApplicationsIcon /> },
+  { id: 'cvs', label: 'Mis CVs', hint: 'Tus CVs por rol y los de cada postulación', counted: 'CVs', icon: <CvsIcon /> },
   { id: 'profile', label: 'Mi perfil', hint: 'Tus datos, tu trayectoria y tus logros: de acá salen todos tus CVs', icon: <ProfileIcon /> },
 ]
 
@@ -78,7 +78,11 @@ export function Sidebar({ section, onNavigate, counts = {}, save, onRetrySave, a
               >
                 <span className="nav-icon">{item.icon}</span>
                 <span className="nav-label">{item.label}</span>
-                {count ? <span className="nav-count">{count}</span> : null}
+                {count ? (
+                  <span className="nav-count" title={`${count} ${item.counted ?? ''}`.trim()}>
+                    {count}
+                  </span>
+                ) : null}
               </button>
             </li>
           )
