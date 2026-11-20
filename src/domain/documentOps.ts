@@ -3,13 +3,10 @@
  * document the same way. Pure functions: ids and timestamps come in as arguments when callers
  * need to know them.
  */
-import type { Experience } from './experiences'
-import { defaultFontSize, defaultMargin, type FontId } from './fonts'
+import type { FontId } from './fonts'
 import {
   applyProfile,
   buildResume,
-  emptySnapshot,
-  graphFromSelection,
   type Cv,
   type CvVersion,
   type Profile,
@@ -49,44 +46,6 @@ export function openCvGraph(document: ResumeDocument, cvId: string): ResumeDocum
   const next = cvs.find((cv) => cv.id === cvId)
   if (!next) return document
   return { ...document, cvs, activeCvId: cvId, nodes: next.nodes, edges: next.edges }
-}
-
-/** A new CV from bank experiences, opened in the workspace. */
-export function createCv(
-  document: ResumeDocument,
-  draft: CvDraft,
-  ids: { id?: string; versionId?: string; now?: Date } = {},
-): { document: ResumeDocument; cvId: string; versionId: string } {
-  const id = ids.id ?? crypto.randomUUID()
-  const versionId = ids.versionId ?? crypto.randomUUID()
-  const version: CvVersion = { id: versionId, createdAt: (ids.now ?? new Date()).toISOString(), snapshot: emptySnapshot() }
-  const selected = draft.experienceIds
-    .map((experienceId) => document.bank.find((item) => item.id === experienceId))
-    .filter((item): item is Experience => Boolean(item))
-  const graph = graphFromSelection(document.profile, { title: draft.position || draft.title, company: draft.company }, selected)
-  const cv: Cv = {
-    id,
-    title: draft.title.trim() || 'Sin título',
-    position: draft.position.trim(),
-    company: draft.company.trim(),
-    posting: draft.posting,
-    summary: '',
-    templateId: draft.templateId,
-    fontId: draft.fontId,
-    fontSize: defaultFontSize(draft.templateId),
-    lineHeight: 1.15,
-    marginId: defaultMargin(draft.templateId),
-    pageSize: 'letter',
-    enabledSections: selected.length > 0 ? ['personal', 'experience', 'skills'] : ['personal'],
-    versions: [version],
-    nodes: graph.nodes,
-    edges: graph.edges,
-  }
-  return {
-    document: { ...document, cvs: [...rememberGraph(document), cv], activeCvId: id, nodes: graph.nodes, edges: graph.edges },
-    cvId: id,
-    versionId,
-  }
 }
 
 /**

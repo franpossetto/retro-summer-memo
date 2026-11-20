@@ -471,45 +471,6 @@ export function personalGraph(profile: Profile): { nodes: ResumeNode[]; edges: R
   return { nodes: [person], edges: [] }
 }
 
-/** Blank CV graph with selected master experiences already attached to a role. */
-export function graphFromSelection(
-  profile: Profile,
-  role: { title: string; company: string },
-  selected: Experience[],
-): { nodes: ResumeNode[]; edges: ResumeEdge[] } {
-  const base = personalGraph(profile)
-  if (selected.length === 0) return base
-
-  const roleId = crypto.randomUUID()
-  const roleNode: RoleNode = {
-    id: roleId,
-    type: 'role',
-    position: { x: ROLE_X, y: TOP + ROW },
-    data: {
-      title: role.title.trim() || 'Role',
-      company: role.company.trim(),
-      location: '',
-      start: '',
-      end: '',
-    },
-  }
-
-  const bullets: BulletNode[] = []
-  const edges: ResumeEdge[] = []
-  selected.forEach((item, index) => {
-    const bulletId = crypto.randomUUID()
-    bullets.push({
-      id: bulletId,
-      type: 'bullet',
-      position: { x: BULLET_X, y: TOP + ROW + index * ROW },
-      data: { text: item.text, ability: '', skills: [...item.skills] },
-    })
-    edges.push({ id: `e-${roleId}-${bulletId}`, source: roleId, target: bulletId })
-  })
-
-  return { nodes: [...base.nodes, roleNode, ...bullets], edges }
-}
-
 /**
  * What a new account starts with: no profile data, experiences, CVs nor applications (the user's
  * assistant fills them through the MCP), just the CV sections and the default pipeline.
