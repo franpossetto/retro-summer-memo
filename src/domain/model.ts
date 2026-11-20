@@ -230,6 +230,10 @@ export type Cv = {
   versions: CvVersion[]
   nodes: ResumeNode[]
   edges: ResumeEdge[]
+  /** The application this CV was made for (its tailored copy). None: a general CV, like "CV React". */
+  applicationId?: string
+  /** The CV it was copied from. */
+  basedOn?: string
   /** Anything else: language, notes… */
   extra?: Extra
 }

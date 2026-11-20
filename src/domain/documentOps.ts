@@ -89,12 +89,18 @@ export function createCv(
   }
 }
 
-/** Removes a CV; if it was open, the first remaining one opens instead. */
+/**
+ * Removes a CV (applications that had it attached forget it); if it was open, the first remaining
+ * one opens instead.
+ */
 export function deleteCv(document: ResumeDocument, cvId: string): ResumeDocument {
   const cvs = document.cvs.filter((cv) => cv.id !== cvId)
-  if (document.activeCvId !== cvId) return { ...document, cvs }
+  const applications = document.applications.map((application) =>
+    application.attachment?.kind === 'cv' && application.attachment.cvId === cvId ? { ...application, attachment: null } : application,
+  )
+  if (document.activeCvId !== cvId) return { ...document, cvs, applications }
   const next = cvs[0]
-  return { ...document, cvs, activeCvId: next?.id ?? '', nodes: next?.nodes ?? [], edges: next?.edges ?? [] }
+  return { ...document, cvs, applications, activeCvId: next?.id ?? '', nodes: next?.nodes ?? [], edges: next?.edges ?? [] }
 }
 
 /** "Generar": saves a new version of a CV built from its current graph. */
